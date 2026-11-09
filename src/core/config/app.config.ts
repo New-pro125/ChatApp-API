@@ -138,11 +138,41 @@ export class SsoConfig {
   }
 }
 
+export class HttpConfig {
+  constructor(
+    readonly bodyLimitBytes: number,
+    readonly requestTimeoutMs: number,
+    readonly headersTimeoutMs: number,
+    readonly keepAliveTimeoutMs: number,
+    readonly connectionsCheckingIntervalMs: number,
+    readonly maxRequestsPerSocket: number,
+    readonly maxHeaderSizeBytes: number,
+    readonly shutdownTimeoutMs: number,
+    readonly compressionThresholdBytes: number,
+    readonly metricsEnabled: boolean,
+    readonly metricsToken: string | undefined,
+    readonly healthCacheTtlMs: number,
+    readonly trustProxy: boolean | number | string,
+    readonly corsOrigins: readonly string[],
+  ) {
+    if (this.headersTimeoutMs > this.requestTimeoutMs) {
+      throw new Error(
+        'HTTP_HEADERS_TIMEOUT_MS must be less than or equal to HTTP_REQUEST_TIMEOUT_MS',
+      );
+    }
+
+    if (this.keepAliveTimeoutMs >= this.headersTimeoutMs) {
+      throw new Error('HTTP_HEADERS_TIMEOUT_MS must be greater than HTTP_KEEP_ALIVE_TIMEOUT_MS');
+    }
+  }
+}
+
 export class AppConfig {
   readonly nodeEnv: NodeEnvironment;
   readonly port: number;
   readonly appOrigin: string;
   readonly docsEnabled: boolean;
+  readonly http: HttpConfig;
 
   readonly databaseUrl: string;
   readonly databasePoolMax: number;
@@ -177,6 +207,23 @@ export class AppConfig {
     this.port = env.readNumber('PORT', 4000);
     this.appOrigin = env.readString('APP_ORIGIN', 'http://localhost:5173');
     this.docsEnabled = env.readBoolean('DOCS_ENABLED', this.nodeEnv !== 'production');
+
+    this.http = new HttpConfig(
+      env.readNumber('HTTP_BODY_LIMIT_BYTES', 262_144),
+      env.readNumber('HTTP_REQUEST_TIMEOUT_MS', 300_000),
+      env.readNumber('HTTP_HEADERS_TIMEOUT_MS', 66_000),
+      env.readNumber('HTTP_KEEP_ALIVE_TIMEOUT_MS', 65_000),
+      env.readNumber('HTTP_CONNECTIONS_CHECK_INTERVAL_MS', 30_000),
+      env.readNumber('HTTP_MAX_REQUESTS_PER_SOCKET', 1_000),
+      env.readNumber('HTTP_MAX_HEADER_SIZE_BYTES', 16_384),
+      env.readNumber('HTTP_SHUTDOWN_TIMEOUT_MS', 15_000),
+      env.readNumber('HTTP_COMPRESSION_THRESHOLD_BYTES', 1_024),
+      env.readBoolean('METRICS_ENABLED', this.nodeEnv !== 'production'),
+      env.readOptional('METRICS_TOKEN'),
+      env.readNumber('HEALTH_CACHE_TTL_MS', 5_000),
+      this.parseTrustProxy(env.readString('TRUST_PROXY', 'false')),
+      this.parseOrigins(env.readString('APP_ORIGINS', this.appOrigin)),
+    );
 
     this.databaseUrl = env.readRequired('DATABASE_URL');
     this.databasePoolMax = env.readNumber('DB_POOL_MAX', 10);
@@ -263,5 +310,35 @@ export class AppConfig {
       `${this.appOrigin}/auth/error`,
     );
     this.oauthMfaRedirect = env.readString('OAUTH_MFA_REDIRECT', `${this.appOrigin}/auth/mfa`);
+  }
+
+  private parseTrustProxy(raw: string): boolean | number | string {
+    if (raw === 'true') {
+      return 1;
+    }
+
+    if (raw === 'false') {
+      return false;
+    }
+
+    const hops = Number(raw);
+
+    return Number.isInteger(hops) && hops >= 0 ? hops : raw;
+  }
+
+  private parseOrigins(raw: string): readonly string[] {
+    const seen = new Set<string>();
+    const origins: string[] = [];
+
+    for (const part of raw.split(',')) {
+      const origin = part.trim();
+
+      if (origin.length > 0 && !seen.has(origin)) {
+        seen.add(origin);
+        origins.push(origin);
+      }
+    }
+
+    return origins;
   }
 }

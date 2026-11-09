@@ -14,6 +14,7 @@ export const CORE_TYPES = {
 
   OpenApiRegistry: Symbol.for('Core.OpenApiRegistry'),
   ApiDocumentBuilder: Symbol.for('Core.ApiDocumentBuilder'),
+  Metrics: Symbol.for('Core.Metrics'),
 
   HttpRequest: Symbol.for('Core.HttpRequest'),
 } as const;

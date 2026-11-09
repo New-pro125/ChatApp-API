@@ -1,4 +1,4 @@
-import type { Server } from 'node:http';
+import compression from 'compression';
 import cors from 'cors';
 import express, { type Express } from 'express';
 import type { Store } from 'express-session';
@@ -6,12 +6,16 @@ import helmet from 'helmet';
 import type { AppContainer, PassportStatic } from '@/core/container/app.container.js';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import type { ErrorMapper } from '@/core/errors/error-mapper.js';
+import { RequestLoggerMiddleware } from '@/core/http/logging/request-logger.js';
 import { ErrorHandlerMiddleware } from '@/core/http/middleware/error-handler.js';
 import { NotFoundMiddleware } from '@/core/http/middleware/not-found.js';
 import { RequestIdMiddleware } from '@/core/http/middleware/request-id.js';
 import type { ApiDocumentBuilder } from '@/core/http/openapi/api-document.builder.js';
 import { DocsRouter } from '@/core/http/openapi/docs.router.js';
 import type { ApiResponse } from '@/core/http/response/api-response.js';
+import { HttpServer } from '@/core/http/server/http-server.js';
+import { MetricsRouter } from '@/core/metrics/metrics.router.js';
+import type { MetricsService } from '@/core/metrics/metrics.service.js';
 import type { AppModule } from '@/core/modules/app.module.js';
 import { SessionMiddleware } from '@/core/session/session.middleware.js';
 import { AuthModule } from '@/modules/auth/auth.module.js';
@@ -20,7 +24,7 @@ import { HealthModule } from '@/modules/health/health.module.js';
 export class Application {
   private readonly app: Express;
   private readonly modules: AppModule[];
-  private server: Server | undefined;
+  private readonly server: HttpServer;
   private started: boolean = false;
 
   constructor(private readonly container: AppContainer) {
@@ -29,18 +33,55 @@ export class Application {
     const sessionStore = container.get<Store>(CORE_TYPES.SessionStore);
     const errorMapper = container.get<ErrorMapper>(CORE_TYPES.ErrorMapper);
     const apiResponse = container.get<ApiResponse>(CORE_TYPES.ApiResponse);
+    const metrics = container.get<MetricsService>(CORE_TYPES.Metrics);
 
     this.app = express();
     this.app.disable('x-powered-by');
-
-    if (config.nodeEnv === 'production') {
-      this.app.set('trust proxy', 1);
-    }
+    this.app.disable('etag');
+    this.app.set('query parser', 'simple');
+    this.app.set('trust proxy', config.http.trustProxy);
 
     this.app.use(new RequestIdMiddleware().handle);
-    this.app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-    this.app.use(cors({ origin: config.appOrigin, credentials: true }));
-    this.app.use(express.json({ limit: '100kb' }));
+    this.app.use(new RequestLoggerMiddleware(logger).handle);
+
+    this.app.use(
+      helmet({
+        contentSecurityPolicy: config.docsEnabled
+          ? false
+          : { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } },
+        crossOriginResourcePolicy: { policy: 'cross-origin' },
+        hsts:
+          config.nodeEnv === 'production'
+            ? { maxAge: 15_552_000, includeSubDomains: true, preload: false }
+            : false,
+      }),
+    );
+
+    this.app.use(
+      cors({
+        origin: config.http.corsOrigins.length === 0 ? false : [...config.http.corsOrigins],
+        credentials: true,
+      }),
+    );
+
+    this.app.use(
+      compression({
+        threshold: config.http.compressionThresholdBytes,
+      }),
+    );
+
+    this.app.use((_req, res, next) => {
+      res.setHeader('Cache-Control', 'no-store');
+      next();
+    });
+
+    this.app.use(metrics.middleware);
+    this.app.use(express.json({ limit: config.http.bodyLimitBytes }));
+
+    if (config.http.metricsEnabled) {
+      this.app.use('/metrics', new MetricsRouter(metrics, config).router);
+    }
+
     this.app.use(new SessionMiddleware(config, sessionStore).handle);
     this.app.use(passport.initialize());
     this.app.use(passport.session());
@@ -58,6 +99,8 @@ export class Application {
 
     this.app.use(new NotFoundMiddleware().handle);
     this.app.use(new ErrorHandlerMiddleware(logger, errorMapper, apiResponse).handle);
+
+    this.server = new HttpServer(this.app, config, logger);
   }
 
   async start(): Promise<void> {
@@ -71,14 +114,10 @@ export class Application {
       await module.configure();
     }
 
-    const { config, logger } = this.container;
+    await this.server.listen();
 
-    await new Promise<void>((resolve) => {
-      this.server = this.app.listen(config.port, () => {
-        logger.info({ port: config.port, environment: config.nodeEnv }, 'API listening');
-        resolve();
-      });
-    });
+    const { config, logger } = this.container;
+    logger.info({ port: config.port, environment: config.nodeEnv }, 'API listening');
 
     this.started = true;
   }
@@ -90,21 +129,7 @@ export class Application {
 
     this.started = false;
 
-    await new Promise<void>((resolve, reject) => {
-      if (!this.server) {
-        resolve();
-        return;
-      }
-
-      this.server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        resolve();
-      });
-    });
+    await this.server.close();
 
     for (const module of this.modules) {
       await module.dispose();

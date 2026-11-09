@@ -11,6 +11,12 @@ import type { RouteContract } from '@/core/http/openapi/openapi.types.js';
 import { HEALTH_TYPES } from '@/modules/health/health.types.js';
 import type { HealthController } from '@/modules/health/web/health.controller.js';
 
+const liveReportSchema = z
+  .object({
+    status: z.literal('ok'),
+  })
+  .meta({ id: 'HealthLiveReport' });
+
 const healthReportSchema = z
   .object({
     status: z.enum(['ok', 'degraded']),
@@ -18,12 +24,33 @@ const healthReportSchema = z
   })
   .meta({ id: 'HealthReport' });
 
+const liveResponse = successEnvelope(liveReportSchema, 'HealthLiveResponse');
 const healthResponse = successEnvelope(healthReportSchema, 'HealthReportResponse');
 
-const healthContract: RouteContract = {
+const liveContract: RouteContract = {
+  operationId: 'health.live',
+  tags: ['Health'],
+  summary: 'Report liveness without touching dependencies',
+  responses: {
+    200: { description: 'The process is running', schema: liveResponse },
+  },
+};
+
+const readyContract: RouteContract = {
+  operationId: 'health.ready',
+  tags: ['Health'],
+  summary: 'Report readiness of the database and Redis',
+  responses: {
+    200: { description: 'All dependencies are reachable', schema: healthResponse },
+    503: { description: 'One or more dependencies are unavailable', schema: healthResponse },
+  },
+};
+
+const aliasContract: RouteContract = {
   operationId: 'health.check',
   tags: ['Health'],
-  summary: 'Report dependency health',
+  summary: 'Deprecated alias for readiness',
+  deprecated: true,
   responses: {
     200: { description: 'All dependencies are reachable', schema: healthResponse },
     503: { description: 'One or more dependencies are unavailable', schema: healthResponse },
@@ -42,10 +69,22 @@ export class HealthRouter {
     this.router = routes.router;
     this.router.use(scope.handle);
 
-    routes.get('/', healthContract, (req, res, next) => {
+    routes.get('/live', liveContract, (req, res, next) => {
       return req.container
         .get<HealthController>(HEALTH_TYPES.HealthController)
-        .check(req, res, next);
+        .live(req, res, next);
+    });
+
+    routes.get('/ready', readyContract, (req, res, next) => {
+      return req.container
+        .get<HealthController>(HEALTH_TYPES.HealthController)
+        .ready(req, res, next);
+    });
+
+    routes.get('/', aliasContract, (req, res, next) => {
+      return req.container
+        .get<HealthController>(HEALTH_TYPES.HealthController)
+        .ready(req, res, next);
     });
   }
 }

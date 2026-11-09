@@ -159,11 +159,31 @@ A provider is enabled only when its client ID, secret, and callback URL are all
 set. OAuth accounts are linked to existing users by verified email; if no
 matching user exists, one is created. Unverified provider emails are rejected.
 
-### Health
+### Health and metrics
 
-| Method | Path      | Description                    |
-| ------ | --------- | ------------------------------ |
-| `GET`  | `/health` | PostgreSQL and Redis readiness |
+| Method | Path            | Description                                    |
+| ------ | --------------- | ---------------------------------------------- |
+| `GET`  | `/health/live`  | Liveness; never touches dependencies           |
+| `GET`  | `/health/ready` | PostgreSQL and Redis readiness                 |
+| `GET`  | `/health`       | Deprecated alias for `/health/ready`           |
+| `GET`  | `/metrics`      | Prometheus metrics, gated by `METRICS_ENABLED` |
+
+Readiness checks are coalesced and cached for `HEALTH_CACHE_TTL_MS` so frequent
+orchestrator probes cannot turn into a database connection storm. `METRICS_TOKEN`
+optionally requires `Authorization: Bearer <token>` on `/metrics`. The metrics
+use the matched route template as a label, so request ids and user ids never
+create unbounded series.
+
+### Server hardening
+
+The raw HTTP server is owned by `src/core/http/server/http-server.ts`, not by
+`app.listen`. It applies explicit request, header, keep-alive, connection-check,
+header-size, and per-socket request limits, rejects malformed requests with a
+`400` and `Connection: close`, and drains connections during shutdown before
+force-closing whatever remains after `HTTP_SHUTDOWN_TIMEOUT_MS`. The Express
+pipeline adds request ids, structured redacted request logs, Helmet, an origin
+allowlist, compression, a JSON body limit, and `Cache-Control: no-store` for
+API responses. All limits and origins are environment-driven; see `.env.example`.
 
 ## Response contract
 
@@ -298,9 +318,12 @@ Generate an MFA key with:
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
 ```
 
-`DOCS_ENABLED` controls the OpenAPI document and Scalar UI. See `.env.example`
-for the full list of database pool, auth hardening, OTP, MFA, SMTP, OAuth, SSO,
-and Docker Compose options.
+`DOCS_ENABLED` controls the OpenAPI document and Scalar UI. `METRICS_ENABLED`
+and `METRICS_TOKEN` control the Prometheus endpoint. The `HTTP_*`, `TRUST_PROXY`,
+`APP_ORIGINS`, and `HEALTH_CACHE_TTL_MS` variables tune server timeouts, proxy
+trust, the CORS allowlist, and readiness caching. See `.env.example` for the
+full list of database pool, HTTP hardening, auth hardening, OTP, MFA, SMTP,
+OAuth, SSO, and Docker Compose options.
 
 ## Scripts
 

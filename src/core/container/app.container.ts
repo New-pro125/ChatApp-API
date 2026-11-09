@@ -12,6 +12,7 @@ import { ApiDocumentBuilder } from '@/core/http/openapi/api-document.builder.js'
 import { OpenApiRegistry } from '@/core/http/openapi/openapi.registry.js';
 import { ApiResponse } from '@/core/http/response/api-response.js';
 import { LoggerProvider } from '@/core/logging/logger.provider.js';
+import { MetricsService } from '@/core/metrics/metrics.service.js';
 import { SessionStoreFactory } from '@/core/session/session.store.js';
 import type { RedisClient } from '@/types/redis.js';
 
@@ -48,6 +49,7 @@ export class AppContainer extends Container {
     this.bind<ApiDocumentBuilder>(CORE_TYPES.ApiDocumentBuilder)
       .to(ApiDocumentBuilder)
       .inSingletonScope();
+    this.bind<MetricsService>(CORE_TYPES.Metrics).to(MetricsService).inSingletonScope();
   }
 
   async connect(): Promise<void> {

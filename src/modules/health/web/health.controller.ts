@@ -13,7 +13,11 @@ export class HealthController {
     @inject(CORE_TYPES.ApiResponse) private readonly response: ApiResponse,
   ) {}
 
-  check: RequestHandler = async (_req, res) => {
+  live: RequestHandler = (_req, res) => {
+    this.response.send(res, 200, this.health.live());
+  };
+
+  ready: RequestHandler = async (_req, res) => {
     const report = await this.health.check();
 
     this.response.send(res, report.status === 'ok' ? 200 : 503, report);
