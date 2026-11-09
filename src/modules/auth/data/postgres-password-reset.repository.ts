@@ -1,101 +1,118 @@
+import { and, desc, eq, type InferSelectModel, sql } from 'drizzle-orm';
 import { inject, injectable } from 'inversify';
-import type { Pool } from 'pg';
 import { CORE_TYPES } from '@/core/container/core.types.js';
+import type { AppDatabase } from '@/core/database/database.provider.js';
+import { passwordResetCodes } from '@/core/database/schema/index.js';
 import { PasswordResetCodeRecord } from '@/modules/auth/logic/entities/password-reset-code.js';
 import type {
   CreatePasswordResetCodeInput,
   PasswordResetRepository,
 } from '@/modules/auth/logic/ports/password-reset.repository.js';
 
-interface PasswordResetRow {
-  id: string;
-  user_id: string;
-  code_hash: string;
-  expires_at: Date;
-  attempts: number;
-  consumed_at: Date | null;
-  reset_token_hash: string | null;
-  token_expires_at: Date | null;
-  token_used_at: Date | null;
-  created_at: Date;
-}
+const resetSelection = {
+  id: passwordResetCodes.id,
+  userId: passwordResetCodes.userId,
+  codeHash: passwordResetCodes.codeHash,
+  expiresAt: passwordResetCodes.expiresAt,
+  attempts: passwordResetCodes.attempts,
+  consumedAt: passwordResetCodes.consumedAt,
+  resetTokenHash: passwordResetCodes.resetTokenHash,
+  tokenExpiresAt: passwordResetCodes.tokenExpiresAt,
+  tokenUsedAt: passwordResetCodes.tokenUsedAt,
+  createdAt: passwordResetCodes.createdAt,
+} as const;
 
-const RESET_COLUMNS =
-  'id, user_id, code_hash, expires_at, attempts, consumed_at, reset_token_hash, token_expires_at, token_used_at, created_at';
+type PasswordResetRow = Pick<
+  InferSelectModel<typeof passwordResetCodes>,
+  keyof typeof resetSelection
+>;
 
 export class PasswordResetRowMapper {
   toRecord(row: PasswordResetRow): PasswordResetCodeRecord {
     return new PasswordResetCodeRecord(
       row.id,
-      row.user_id,
-      row.code_hash,
-      row.expires_at,
+      row.userId,
+      row.codeHash,
+      row.expiresAt,
       row.attempts,
-      row.consumed_at,
-      row.reset_token_hash,
-      row.token_expires_at,
-      row.token_used_at,
-      row.created_at,
+      row.consumedAt,
+      row.resetTokenHash,
+      row.tokenExpiresAt,
+      row.tokenUsedAt,
+      row.createdAt,
     );
   }
 }
 
+/**
+ * Persists OTP codes and the single-use reset tokens derived from them.
+ *
+ * Expiry comparisons use the database clock (`now()`) so multiple API replicas
+ * with slightly different clocks cannot disagree about token validity.
+ */
 @injectable()
 export class PostgresPasswordResetRepository implements PasswordResetRepository {
   private readonly mapper = new PasswordResetRowMapper();
 
-  constructor(@inject(CORE_TYPES.PgPool) private readonly pool: Pool) {}
+  constructor(@inject(CORE_TYPES.Db) private readonly db: AppDatabase) {}
 
   async lastCreatedAt(userId: string): Promise<Date | null> {
-    const { rows } = await this.pool.query<{ created_at: Date }>(
-      `SELECT created_at
-       FROM password_reset_codes
-       WHERE user_id = $1
-       ORDER BY created_at DESC
-       LIMIT 1`,
-      [userId],
-    );
+    const rows = await this.db
+      .select({ createdAt: passwordResetCodes.createdAt })
+      .from(passwordResetCodes)
+      .where(eq(passwordResetCodes.userId, userId))
+      .orderBy(desc(passwordResetCodes.createdAt))
+      .limit(1);
 
-    return rows[0]?.created_at ?? null;
+    return rows[0]?.createdAt ?? null;
   }
 
   async invalidateActive(userId: string): Promise<void> {
-    await this.pool.query(
-      `UPDATE password_reset_codes
-       SET consumed_at = COALESCE(consumed_at, now()),
-           token_used_at = CASE
-             WHEN reset_token_hash IS NOT NULL AND token_used_at IS NULL THEN now()
-             ELSE token_used_at
-           END
-       WHERE user_id = $1
-         AND (
-           consumed_at IS NULL
-           OR (reset_token_hash IS NOT NULL AND token_used_at IS NULL)
-         )`,
-      [userId],
-    );
+    await this.db
+      .update(passwordResetCodes)
+      .set({
+        consumedAt: sql`coalesce(${passwordResetCodes.consumedAt}, now())`,
+        tokenUsedAt: sql`case
+          when ${passwordResetCodes.resetTokenHash} is not null
+            and ${passwordResetCodes.tokenUsedAt} is null
+          then now()
+          else ${passwordResetCodes.tokenUsedAt}
+        end`,
+      })
+      .where(
+        and(
+          eq(passwordResetCodes.userId, userId),
+          sql`(
+            ${passwordResetCodes.consumedAt} is null
+            or (${passwordResetCodes.resetTokenHash} is not null
+              and ${passwordResetCodes.tokenUsedAt} is null)
+          )`,
+        ),
+      );
   }
 
   async create(input: CreatePasswordResetCodeInput): Promise<void> {
-    await this.pool.query(
-      `INSERT INTO password_reset_codes
-         (user_id, code_hash, expires_at, requested_ip)
-       VALUES ($1, $2, $3, $4)`,
-      [input.userId, input.codeHash, input.expiresAt, input.requestedIp],
-    );
+    await this.db.insert(passwordResetCodes).values({
+      userId: input.userId,
+      codeHash: input.codeHash,
+      expiresAt: input.expiresAt,
+      requestedIp: input.requestedIp,
+    });
   }
 
   async findActive(userId: string): Promise<PasswordResetCodeRecord | null> {
-    const { rows } = await this.pool.query<PasswordResetRow>(
-      `SELECT ${RESET_COLUMNS}
-       FROM password_reset_codes
-       WHERE user_id = $1
-         AND consumed_at IS NULL
-         AND expires_at > now()
-       ORDER BY created_at DESC
-       LIMIT 1`,
-      [userId],
-    );
+    const rows = await this.db
+      .select(resetSelection)
+      .from(passwordResetCodes)
+      .where(
+        and(
+          eq(passwordResetCodes.userId, userId),
+          sql`${passwordResetCodes.consumedAt} is null`,
+          sql`${passwordResetCodes.expiresAt} > now()`,
+        ),
+      )
+      .orderBy(desc(passwordResetCodes.createdAt))
+      .limit(1);
 
     const row = rows[0];
 
@@ -103,33 +120,29 @@ export class PostgresPasswordResetRepository implements PasswordResetRepository 
   }
 
   async incrementAttempts(id: string): Promise<void> {
-    await this.pool.query(
-      `UPDATE password_reset_codes
-       SET attempts = attempts + 1
-       WHERE id = $1`,
-      [id],
-    );
+    await this.db
+      .update(passwordResetCodes)
+      .set({ attempts: sql`${passwordResetCodes.attempts} + 1` })
+      .where(eq(passwordResetCodes.id, id));
   }
 
   async markOtpVerified(id: string, tokenHash: string, tokenExpiresAt: Date): Promise<void> {
-    await this.pool.query(
-      `UPDATE password_reset_codes
-       SET consumed_at = now(),
-           reset_token_hash = $2,
-           token_expires_at = $3
-       WHERE id = $1`,
-      [id, tokenHash, tokenExpiresAt],
-    );
+    await this.db
+      .update(passwordResetCodes)
+      .set({
+        consumedAt: sql`now()`,
+        resetTokenHash: tokenHash,
+        tokenExpiresAt,
+      })
+      .where(eq(passwordResetCodes.id, id));
   }
 
   async findByTokenHash(tokenHash: string): Promise<PasswordResetCodeRecord | null> {
-    const { rows } = await this.pool.query<PasswordResetRow>(
-      `SELECT ${RESET_COLUMNS}
-       FROM password_reset_codes
-       WHERE reset_token_hash = $1
-       LIMIT 1`,
-      [tokenHash],
-    );
+    const rows = await this.db
+      .select(resetSelection)
+      .from(passwordResetCodes)
+      .where(eq(passwordResetCodes.resetTokenHash, tokenHash))
+      .limit(1);
 
     const row = rows[0];
 
@@ -137,11 +150,9 @@ export class PostgresPasswordResetRepository implements PasswordResetRepository 
   }
 
   async markTokenUsed(id: string): Promise<void> {
-    await this.pool.query(
-      `UPDATE password_reset_codes
-       SET token_used_at = now()
-       WHERE id = $1`,
-      [id],
-    );
+    await this.db
+      .update(passwordResetCodes)
+      .set({ tokenUsedAt: sql`now()` })
+      .where(eq(passwordResetCodes.id, id));
   }
 }

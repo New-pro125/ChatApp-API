@@ -1,6 +1,8 @@
+import { and, count, eq, isNull, lt, or, sql } from 'drizzle-orm';
 import { inject, injectable } from 'inversify';
-import type { Pool, PoolClient } from 'pg';
 import { CORE_TYPES } from '@/core/container/core.types.js';
+import type { AppDatabase } from '@/core/database/database.provider.js';
+import { mfaChallenges, mfaRecoveryCodes, users } from '@/core/database/schema/index.js';
 import { PersistenceException } from '@/core/errors/repository.error.js';
 import {
   MfaChallengeRecord,
@@ -11,230 +13,233 @@ import type {
   MfaRepository,
 } from '@/modules/auth/logic/ports/mfa.repository.js';
 
-interface MfaChallengeRow {
-  id: string;
-  user_id: string;
-  expires_at: Date;
-  attempts: number;
-  consumed_at: Date | null;
-  created_at: Date;
-}
+const challengeSelection = {
+  id: mfaChallenges.id,
+  userId: mfaChallenges.userId,
+  expiresAt: mfaChallenges.expiresAt,
+  attempts: mfaChallenges.attempts,
+  consumedAt: mfaChallenges.consumedAt,
+  createdAt: mfaChallenges.createdAt,
+} as const;
 
-interface MfaRecoveryCodeRow {
-  id: string;
-  user_id: string;
-  used_at: Date | null;
-  created_at: Date;
-}
+const recoveryCodeSelection = {
+  id: mfaRecoveryCodes.id,
+  userId: mfaRecoveryCodes.userId,
+  usedAt: mfaRecoveryCodes.usedAt,
+  createdAt: mfaRecoveryCodes.createdAt,
+} as const;
 
-const CHALLENGE_COLUMNS = 'id, user_id, expires_at, attempts, consumed_at, created_at';
-const RECOVERY_CODE_COLUMNS = 'id, user_id, used_at, created_at';
-
+/**
+ * Persists MFA challenges, TOTP enrollment state, and recovery codes.
+ *
+ * Challenge and recovery-code secrets are already hashed by the service layer;
+ * this repository only stores and conditionally consumes them.
+ */
 @injectable()
 export class PostgresMfaRepository implements MfaRepository {
-  constructor(@inject(CORE_TYPES.PgPool) private readonly pool: Pool) {}
+  constructor(@inject(CORE_TYPES.Db) private readonly db: AppDatabase) {}
 
   async invalidateChallenges(userId: string): Promise<void> {
-    await this.execute('Failed to invalidate MFA challenges', () =>
-      this.pool.query(
-        `UPDATE mfa_challenges
-         SET consumed_at = now()
-         WHERE user_id = $1 AND consumed_at IS NULL`,
-        [userId],
-      ),
-    );
+    await this.execute('Failed to invalidate MFA challenges', async () => {
+      await this.db
+        .update(mfaChallenges)
+        .set({ consumedAt: sql`now()` })
+        .where(and(eq(mfaChallenges.userId, userId), isNull(mfaChallenges.consumedAt)));
+    });
   }
 
   async createChallenge(input: CreateMfaChallengeInput): Promise<void> {
-    await this.execute('Failed to create MFA challenge', () =>
-      this.pool.query(
-        `INSERT INTO mfa_challenges (user_id, token_hash, expires_at, requested_ip)
-         VALUES ($1, $2, $3, $4)`,
-        [input.userId, input.tokenHash, input.expiresAt, input.requestedIp],
-      ),
-    );
+    await this.execute('Failed to create MFA challenge', async () => {
+      await this.db.insert(mfaChallenges).values({
+        userId: input.userId,
+        tokenHash: input.tokenHash,
+        expiresAt: input.expiresAt,
+        requestedIp: input.requestedIp,
+      });
+    });
   }
 
   findChallengeByTokenHash(tokenHash: string): Promise<MfaChallengeRecord | null> {
     return this.execute('Failed to load MFA challenge', async () => {
-      const { rows } = await this.pool.query<MfaChallengeRow>(
-        `SELECT ${CHALLENGE_COLUMNS}
-         FROM mfa_challenges
-         WHERE token_hash = $1
-         LIMIT 1`,
-        [tokenHash],
-      );
+      const rows = await this.db
+        .select(challengeSelection)
+        .from(mfaChallenges)
+        .where(eq(mfaChallenges.tokenHash, tokenHash))
+        .limit(1);
 
       const row = rows[0];
 
       return row
         ? new MfaChallengeRecord(
             row.id,
-            row.user_id,
-            row.expires_at,
+            row.userId,
+            row.expiresAt,
             row.attempts,
-            row.consumed_at,
-            row.created_at,
+            row.consumedAt,
+            row.createdAt,
           )
         : null;
     });
   }
 
   async incrementChallengeAttempts(id: string): Promise<void> {
-    await this.execute('Failed to update MFA challenge', () =>
-      this.pool.query(
-        `UPDATE mfa_challenges
-         SET attempts = attempts + 1
-         WHERE id = $1`,
-        [id],
-      ),
-    );
+    await this.execute('Failed to update MFA challenge', async () => {
+      await this.db
+        .update(mfaChallenges)
+        .set({ attempts: sql`${mfaChallenges.attempts} + 1` })
+        .where(eq(mfaChallenges.id, id));
+    });
   }
 
   consumeChallenge(id: string): Promise<boolean> {
     return this.execute('Failed to consume MFA challenge', async () => {
-      const result = await this.pool.query(
-        `UPDATE mfa_challenges
-         SET consumed_at = now()
-         WHERE id = $1
-           AND consumed_at IS NULL
-           AND expires_at > now()`,
-        [id],
-      );
+      const rows = await this.db
+        .update(mfaChallenges)
+        .set({ consumedAt: sql`now()` })
+        .where(
+          and(
+            eq(mfaChallenges.id, id),
+            isNull(mfaChallenges.consumedAt),
+            sql`${mfaChallenges.expiresAt} > now()`,
+          ),
+        )
+        .returning({ id: mfaChallenges.id });
 
-      return (result.rowCount ?? 0) > 0;
+      return rows.length > 0;
     });
   }
 
   async startEnrollment(userId: string, secretCiphertext: string, startedAt: Date): Promise<void> {
-    await this.execute('Failed to start MFA enrollment', () =>
-      this.pool.query(
-        `UPDATE users
-         SET mfa_secret_ciphertext = $2,
-             mfa_enrollment_started_at = $3,
-             mfa_enabled = false,
-             mfa_enrolled_at = NULL,
-             mfa_last_totp_step = NULL,
-             updated_at = now()
-         WHERE id = $1`,
-        [userId, secretCiphertext, startedAt],
-      ),
-    );
+    await this.execute('Failed to start MFA enrollment', async () => {
+      await this.db
+        .update(users)
+        .set({
+          mfaSecretCiphertext: secretCiphertext,
+          mfaEnrollmentStartedAt: startedAt,
+          mfaEnabled: false,
+          mfaEnrolledAt: null,
+          mfaLastTotpStep: null,
+          updatedAt: sql`now()`,
+        })
+        .where(eq(users.id, userId));
+    });
   }
 
   async activate(userId: string, enrolledAt: Date, recoveryCodeHashes: string[]): Promise<void> {
-    await this.transaction('Failed to activate MFA', async (client) => {
-      await client.query(
-        `UPDATE users
-         SET mfa_enabled = true,
-             mfa_enrolled_at = $2,
-             mfa_enrollment_started_at = NULL,
-             updated_at = now()
-         WHERE id = $1`,
-        [userId, enrolledAt],
-      );
+    await this.transaction('Failed to activate MFA', async (db) => {
+      await db
+        .update(users)
+        .set({
+          mfaEnabled: true,
+          mfaEnrolledAt: enrolledAt,
+          mfaEnrollmentStartedAt: null,
+          updatedAt: sql`now()`,
+        })
+        .where(eq(users.id, userId));
 
-      await this.replaceRecoveryCodesWith(client, userId, recoveryCodeHashes);
+      await this.replaceRecoveryCodesWith(db, userId, recoveryCodeHashes);
     });
   }
 
   async disable(userId: string): Promise<void> {
-    await this.transaction('Failed to disable MFA', async (client) => {
-      await client.query(
-        `UPDATE users
-         SET mfa_enabled = false,
-             mfa_secret_ciphertext = NULL,
-             mfa_enrollment_started_at = NULL,
-             mfa_enrolled_at = NULL,
-             mfa_last_totp_step = NULL,
-             updated_at = now()
-         WHERE id = $1`,
-        [userId],
-      );
+    await this.transaction('Failed to disable MFA', async (db) => {
+      await db
+        .update(users)
+        .set({
+          mfaEnabled: false,
+          mfaSecretCiphertext: null,
+          mfaEnrollmentStartedAt: null,
+          mfaEnrolledAt: null,
+          mfaLastTotpStep: null,
+          updatedAt: sql`now()`,
+        })
+        .where(eq(users.id, userId));
 
-      await client.query('DELETE FROM mfa_recovery_codes WHERE user_id = $1', [userId]);
+      await db.delete(mfaRecoveryCodes).where(eq(mfaRecoveryCodes.userId, userId));
     });
   }
 
   consumeTotpStep(userId: string, step: number): Promise<boolean> {
     return this.execute('Failed to record TOTP step', async () => {
-      const result = await this.pool.query(
-        `UPDATE users
-         SET mfa_last_totp_step = $2,
-             updated_at = now()
-         WHERE id = $1
-           AND (mfa_last_totp_step IS NULL OR mfa_last_totp_step < $2)`,
-        [userId, step],
-      );
+      const rows = await this.db
+        .update(users)
+        .set({
+          mfaLastTotpStep: step,
+          updatedAt: sql`now()`,
+        })
+        .where(
+          and(
+            eq(users.id, userId),
+            or(isNull(users.mfaLastTotpStep), lt(users.mfaLastTotpStep, step)),
+          ),
+        )
+        .returning({ id: users.id });
 
-      return (result.rowCount ?? 0) > 0;
+      return rows.length > 0;
     });
   }
 
   findRecoveryCode(userId: string, codeHash: string): Promise<MfaRecoveryCodeRecord | null> {
     return this.execute('Failed to load MFA recovery code', async () => {
-      const { rows } = await this.pool.query<MfaRecoveryCodeRow>(
-        `SELECT ${RECOVERY_CODE_COLUMNS}
-         FROM mfa_recovery_codes
-         WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL
-         LIMIT 1`,
-        [userId, codeHash],
-      );
+      const rows = await this.db
+        .select(recoveryCodeSelection)
+        .from(mfaRecoveryCodes)
+        .where(
+          and(
+            eq(mfaRecoveryCodes.userId, userId),
+            eq(mfaRecoveryCodes.codeHash, codeHash),
+            isNull(mfaRecoveryCodes.usedAt),
+          ),
+        )
+        .limit(1);
 
       const row = rows[0];
 
-      return row
-        ? new MfaRecoveryCodeRecord(row.id, row.user_id, row.used_at, row.created_at)
-        : null;
+      return row ? new MfaRecoveryCodeRecord(row.id, row.userId, row.usedAt, row.createdAt) : null;
     });
   }
 
   markRecoveryCodeUsed(id: string): Promise<boolean> {
     return this.execute('Failed to consume MFA recovery code', async () => {
-      const result = await this.pool.query(
-        `UPDATE mfa_recovery_codes
-         SET used_at = now()
-         WHERE id = $1 AND used_at IS NULL`,
-        [id],
-      );
+      const rows = await this.db
+        .update(mfaRecoveryCodes)
+        .set({ usedAt: sql`now()` })
+        .where(and(eq(mfaRecoveryCodes.id, id), isNull(mfaRecoveryCodes.usedAt)))
+        .returning({ id: mfaRecoveryCodes.id });
 
-      return (result.rowCount ?? 0) > 0;
+      return rows.length > 0;
     });
   }
 
   countUnusedRecoveryCodes(userId: string): Promise<number> {
     return this.execute('Failed to count MFA recovery codes', async () => {
-      const { rows } = await this.pool.query<{ count: number }>(
-        `SELECT count(*)::int AS count
-         FROM mfa_recovery_codes
-         WHERE user_id = $1 AND used_at IS NULL`,
-        [userId],
-      );
+      const rows = await this.db
+        .select({ total: count() })
+        .from(mfaRecoveryCodes)
+        .where(and(eq(mfaRecoveryCodes.userId, userId), isNull(mfaRecoveryCodes.usedAt)));
 
-      return rows[0]?.count ?? 0;
+      return Number(rows[0]?.total ?? 0);
     });
   }
 
   async replaceRecoveryCodes(userId: string, codeHashes: string[]): Promise<void> {
-    await this.transaction('Failed to replace MFA recovery codes', (client) =>
-      this.replaceRecoveryCodesWith(client, userId, codeHashes),
+    await this.transaction('Failed to replace MFA recovery codes', (db) =>
+      this.replaceRecoveryCodesWith(db, userId, codeHashes),
     );
   }
 
   private async replaceRecoveryCodesWith(
-    client: PoolClient,
+    db: AppDatabase,
     userId: string,
     codeHashes: string[],
   ): Promise<void> {
-    await client.query('DELETE FROM mfa_recovery_codes WHERE user_id = $1', [userId]);
+    await db.delete(mfaRecoveryCodes).where(eq(mfaRecoveryCodes.userId, userId));
 
-    for (const codeHash of codeHashes) {
-      await client.query(
-        `INSERT INTO mfa_recovery_codes (user_id, code_hash)
-         VALUES ($1, $2)`,
-        [userId, codeHash],
-      );
+    if (codeHashes.length === 0) {
+      return;
     }
+
+    await db.insert(mfaRecoveryCodes).values(codeHashes.map((codeHash) => ({ userId, codeHash })));
   }
 
   private async execute<T>(operation: string, work: () => Promise<T>): Promise<T> {
@@ -247,26 +252,12 @@ export class PostgresMfaRepository implements MfaRepository {
 
   private async transaction<T>(
     operation: string,
-    work: (client: PoolClient) => Promise<T>,
+    work: (db: AppDatabase) => Promise<T>,
   ): Promise<T> {
-    const client = await this.pool.connect();
-
     try {
-      await client.query('BEGIN');
-      const result = await work(client);
-      await client.query('COMMIT');
-
-      return result;
+      return await this.db.transaction((tx) => work(tx));
     } catch (error) {
-      try {
-        await client.query('ROLLBACK');
-      } catch {
-        // The connection may already be unusable; preserve the original error.
-      }
-
       throw new PersistenceException(operation, { cause: error });
-    } finally {
-      client.release();
     }
   }
 }

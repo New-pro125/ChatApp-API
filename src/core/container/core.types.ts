@@ -3,6 +3,7 @@ export const CORE_TYPES = {
   Logger: Symbol.for('Core.Logger'),
 
   PgPool: Symbol.for('Core.PgPool'),
+  Db: Symbol.for('Core.Db'),
   RedisClient: Symbol.for('Core.RedisClient'),
 
   SessionStore: Symbol.for('Core.SessionStore'),

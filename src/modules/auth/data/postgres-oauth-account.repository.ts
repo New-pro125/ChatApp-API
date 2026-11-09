@@ -1,28 +1,36 @@
+import { and, eq, sql } from 'drizzle-orm';
 import { inject, injectable } from 'inversify';
-import type { Pool, PoolClient } from 'pg';
 import { CORE_TYPES } from '@/core/container/core.types.js';
+import { PostgresErrorInspector } from '@/core/database/database.error-inspector.js';
+import type { AppDatabase } from '@/core/database/database.provider.js';
+import { oauthAccounts, users } from '@/core/database/schema/index.js';
 import { AppError } from '@/core/errors/app.error.js';
 import { PersistenceException } from '@/core/errors/repository.error.js';
-import {
-  USER_COLUMNS,
-  type UserRow,
-  UserRowMapper,
-} from '@/modules/auth/data/postgres-user.repository.js';
+import { UserRecordMapper, type UserRow, userSelection } from '@/modules/auth/data/user.mapper.js';
 import type { VerifiedOAuthProfile } from '@/modules/auth/logic/entities/oauth-profile.js';
 import type { UserRecord } from '@/modules/auth/logic/entities/user-record.js';
 import type { OAuthAccountRepository } from '@/modules/auth/logic/ports/oauth-account.repository.js';
 
+/**
+ * Resolves a verified OAuth/OIDC profile to a user.
+ *
+ * Lookup order is provider account, then verified email, then a new verified
+ * user. All three steps run inside one transaction so two concurrent logins
+ * cannot create duplicate users; a unique violation is resolved by re-reading
+ * the account created by the competing transaction.
+ */
 @injectable()
 export class PostgresOAuthAccountRepository implements OAuthAccountRepository {
-  private readonly mapper = new UserRowMapper();
+  private readonly mapper = new UserRecordMapper();
+  private readonly errors = new PostgresErrorInspector();
 
-  constructor(@inject(CORE_TYPES.PgPool) private readonly pool: Pool) {}
+  constructor(@inject(CORE_TYPES.Db) private readonly db: AppDatabase) {}
 
   async resolve(profile: VerifiedOAuthProfile): Promise<UserRecord> {
     try {
       return await this.resolveInTransaction(profile);
     } catch (error) {
-      if (this.isUniqueViolation(error)) {
+      if (this.errors.isUniqueViolation(error)) {
         const existing = await this.findByProviderAccount(profile);
         if (existing) {
           return existing;
@@ -37,94 +45,82 @@ export class PostgresOAuthAccountRepository implements OAuthAccountRepository {
     }
   }
 
-  private async resolveInTransaction(profile: VerifiedOAuthProfile): Promise<UserRecord> {
-    const client = await this.pool.connect();
-
-    try {
-      await client.query('BEGIN');
-
-      const existing = await this.findByProviderAccount(profile, client);
+  private resolveInTransaction(profile: VerifiedOAuthProfile): Promise<UserRecord> {
+    return this.db.transaction(async (tx) => {
+      const existing = await this.findByProviderAccount(profile, tx);
 
       if (existing) {
-        await client.query('COMMIT');
         return existing;
       }
 
-      let user = await this.findUserByEmail(profile.email, client);
+      let user = await this.findUserByEmail(profile.email, tx);
 
       if (!user) {
-        user = await this.createUser(profile, client);
+        user = await this.createUser(profile, tx);
       }
 
-      await client.query(
-        `INSERT INTO oauth_accounts
-           (user_id, provider, provider_account_id, email, display_name)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [user.id, profile.provider, profile.providerAccountId, profile.email, profile.displayName],
-      );
-
-      await client.query('COMMIT');
+      await tx.insert(oauthAccounts).values({
+        userId: user.id,
+        provider: profile.provider,
+        providerAccountId: profile.providerAccountId,
+        email: profile.email,
+        displayName: profile.displayName,
+      });
 
       return user;
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+    });
   }
 
   private async findByProviderAccount(
     profile: VerifiedOAuthProfile,
-    client: Pool | PoolClient = this.pool,
+    db: AppDatabase = this.db,
   ): Promise<UserRecord | null> {
-    const { rows } = await client.query<UserRow>(
-      `SELECT ${USER_COLUMNS}
-       FROM users u
-       JOIN oauth_accounts a ON a.user_id = u.id
-       WHERE a.provider = $1 AND a.provider_account_id = $2`,
-      [profile.provider, profile.providerAccountId],
-    );
+    const rows = await db
+      .select(userSelection)
+      .from(users)
+      .innerJoin(oauthAccounts, eq(oauthAccounts.userId, users.id))
+      .where(
+        and(
+          eq(oauthAccounts.provider, profile.provider),
+          eq(oauthAccounts.providerAccountId, profile.providerAccountId),
+        ),
+      )
+      .limit(1);
 
     const row = rows[0];
 
     return row ? this.mapper.toRecord(row) : null;
   }
 
-  private async findUserByEmail(email: string, client: PoolClient): Promise<UserRecord | null> {
-    const { rows } = await client.query<UserRow>(
-      `SELECT ${USER_COLUMNS} FROM users WHERE lower(email) = lower($1)`,
-      [email],
-    );
+  private async findUserByEmail(email: string, db: AppDatabase): Promise<UserRecord | null> {
+    const rows = await db
+      .select(userSelection)
+      .from(users)
+      .where(sql`lower(${users.email}) = lower(${email})`)
+      .limit(1);
 
-    const row = rows[0];
+    const row: UserRow | undefined = rows[0];
 
     return row ? this.mapper.toRecord(row) : null;
   }
 
-  private async createUser(profile: VerifiedOAuthProfile, client: PoolClient): Promise<UserRecord> {
-    const { rows } = await client.query<UserRow>(
-      `INSERT INTO users (email, display_name, password_hash, email_verified_at)
-       VALUES ($1, $2, NULL, now())
-       RETURNING ${USER_COLUMNS}`,
-      [profile.email, profile.displayName],
-    );
+  private async createUser(profile: VerifiedOAuthProfile, db: AppDatabase): Promise<UserRecord> {
+    const rows = await db
+      .insert(users)
+      .values({
+        email: profile.email,
+        displayName: profile.displayName,
+        passwordHash: null,
+        emailVerifiedAt: sql`now()`,
+      })
+      .returning(userSelection);
 
     const row = rows[0];
 
     if (!row) {
-      throw new Error('PostgreSQL did not return the created OAuth user');
+      throw new PersistenceException('PostgreSQL did not return the created OAuth user');
     }
 
     return this.mapper.toRecord(row);
-  }
-
-  private isUniqueViolation(error: unknown): error is { code: string } {
-    return (
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      (error as { code?: unknown }).code === '23505'
-    );
   }
 }

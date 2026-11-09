@@ -144,6 +144,10 @@ export class AppConfig {
   readonly appOrigin: string;
 
   readonly databaseUrl: string;
+  readonly databasePoolMax: number;
+  readonly databaseStatementTimeoutMs: number;
+  readonly databaseIdleTimeoutMs: number;
+  readonly databaseConnectionTimeoutMs: number;
   readonly redisUrl: string;
 
   readonly sessionSecret: string;
@@ -173,6 +177,10 @@ export class AppConfig {
     this.appOrigin = env.readString('APP_ORIGIN', 'http://localhost:5173');
 
     this.databaseUrl = env.readRequired('DATABASE_URL');
+    this.databasePoolMax = env.readNumber('DB_POOL_MAX', 10);
+    this.databaseStatementTimeoutMs = env.readNumber('DB_STATEMENT_TIMEOUT_MS', 5000);
+    this.databaseIdleTimeoutMs = env.readNumber('DB_IDLE_TIMEOUT_MS', 30000);
+    this.databaseConnectionTimeoutMs = env.readNumber('DB_CONNECTION_TIMEOUT_MS', 5000);
     this.redisUrl = env.readRequired('REDIS_URL');
 
     this.sessionSecret = env.readRequired('SESSION_SECRET');
