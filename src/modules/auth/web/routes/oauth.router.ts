@@ -1,9 +1,12 @@
-import { Router } from 'express';
+import type { Router } from 'express';
 import { inject, injectable, multiInject } from 'inversify';
 import type passport from 'passport';
 import type { AppConfig } from '@/core/config/app.config.js';
 import { CORE_TYPES } from '@/core/container/core.types.js';
+import { DocumentedRouter } from '@/core/http/openapi/documented-router.js';
+import type { OpenApiRegistry } from '@/core/http/openapi/openapi.registry.js';
 import { AUTH_TYPES } from '@/modules/auth/auth.types.js';
+import { oauthBeginContract, oauthCallbackContract } from '@/modules/auth/web/dto/auth.openapi.js';
 import type { OAuthController } from '@/modules/auth/web/oauth.controller.js';
 import type { PassportProvider } from '@/modules/auth/web/passport/passport.provider.js';
 
@@ -18,14 +21,18 @@ interface OAuthAuthenticateOptions {
 
 @injectable()
 export class OAuthRouter {
-  readonly router = Router();
+  readonly router: Router;
 
   constructor(
     @inject(CORE_TYPES.Passport) passport: PassportStatic,
     @inject(AUTH_TYPES.OAuthController) controller: OAuthController,
     @inject(CORE_TYPES.Config) config: AppConfig,
     @multiInject(AUTH_TYPES.OAuthProvider) providers: PassportProvider[],
+    @inject(CORE_TYPES.OpenApiRegistry) registry: OpenApiRegistry,
   ) {
+    const routes = new DocumentedRouter(registry, '/api/auth');
+    this.router = routes.router;
+
     for (const provider of providers) {
       const beginOptions: OAuthAuthenticateOptions = {
         scope: provider.scope,
@@ -46,10 +53,13 @@ export class OAuthRouter {
         callbackOptions as unknown as passport.AuthenticateOptions,
       );
 
-      this.router.get(`/${provider.routePath}`, beginAuthenticate);
+      routes.get(`/${provider.routePath}`, oauthBeginContract(provider.name), beginAuthenticate);
 
-      this.router.get(`/${provider.routePath}/callback`, callbackAuthenticate, (req, res, next) =>
-        controller.complete(req, res, next),
+      routes.get(
+        `/${provider.routePath}/callback`,
+        oauthCallbackContract(provider.name),
+        callbackAuthenticate,
+        (req, res, next) => controller.complete(req, res, next),
       );
     }
   }

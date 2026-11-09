@@ -76,6 +76,21 @@ reset OTP is logged by the API (except in production, where it is redacted).
 
 ## API
 
+### Interactive documentation
+
+Every route is registered through `DocumentedRouter`, which records an OpenAPI
+3.1 contract while it registers the Express handler. The document is generated
+from the same Zod schemas the controllers validate with, so routes cannot be
+added without documentation.
+
+- `GET /api/openapi.json` — the generated OpenAPI document
+- `GET /api/docs` — the Scalar API reference UI
+
+Documentation is controlled by `DOCS_ENABLED`. It defaults to `true` outside
+production and `false` in production; set it explicitly to expose or hide the
+docs in a deployed environment. The runtime registry rejects duplicate
+`operationId` values and duplicate method/path pairs during startup.
+
 ### Session authentication
 
 | Method | Path                 | Description                              |
@@ -283,8 +298,9 @@ Generate an MFA key with:
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
 ```
 
-See `.env.example` for the full list of auth hardening, OTP, MFA, SMTP, OAuth,
-SSO, and Docker Compose options.
+`DOCS_ENABLED` controls the OpenAPI document and Scalar UI. See `.env.example`
+for the full list of database pool, auth hardening, OTP, MFA, SMTP, OAuth, SSO,
+and Docker Compose options.
 
 ## Scripts
 
@@ -297,8 +313,11 @@ npm run start      # node dist/index.js
 npm run lint       # biome check
 npm run check      # biome check --write
 npm run verify     # typecheck + lint + build
-npm run db:migrate
-npm run db:rollback
+npm run db:generate  # generate SQL from the Drizzle schema
+npm run db:migrate   # apply pending Drizzle migrations
+npm run db:check     # detect schema drift
+npm run db:studio    # open Drizzle Studio (development only)
+npm run db:reset     # drop local schemas and rebuild from migrations
 ```
 
 ## Docker

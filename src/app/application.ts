@@ -9,6 +9,8 @@ import type { ErrorMapper } from '@/core/errors/error-mapper.js';
 import { ErrorHandlerMiddleware } from '@/core/http/middleware/error-handler.js';
 import { NotFoundMiddleware } from '@/core/http/middleware/not-found.js';
 import { RequestIdMiddleware } from '@/core/http/middleware/request-id.js';
+import type { ApiDocumentBuilder } from '@/core/http/openapi/api-document.builder.js';
+import { DocsRouter } from '@/core/http/openapi/docs.router.js';
 import type { ApiResponse } from '@/core/http/response/api-response.js';
 import type { AppModule } from '@/core/modules/app.module.js';
 import { SessionMiddleware } from '@/core/session/session.middleware.js';
@@ -44,6 +46,11 @@ export class Application {
     this.app.use(passport.session());
 
     this.modules = [new HealthModule(container), new AuthModule(container, config)];
+
+    if (config.docsEnabled) {
+      const documents = container.get<ApiDocumentBuilder>(CORE_TYPES.ApiDocumentBuilder);
+      this.app.use('/api', new DocsRouter(documents).router);
+    }
 
     for (const module of this.modules) {
       this.app.use(module.mountPath, module.router);

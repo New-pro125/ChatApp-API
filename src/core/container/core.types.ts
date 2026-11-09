@@ -12,5 +12,8 @@ export const CORE_TYPES = {
   ApiResponse: Symbol.for('Core.ApiResponse'),
   ErrorMapper: Symbol.for('Core.ErrorMapper'),
 
+  OpenApiRegistry: Symbol.for('Core.OpenApiRegistry'),
+  ApiDocumentBuilder: Symbol.for('Core.ApiDocumentBuilder'),
+
   HttpRequest: Symbol.for('Core.HttpRequest'),
 } as const;

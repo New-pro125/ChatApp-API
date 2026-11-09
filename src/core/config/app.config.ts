@@ -142,6 +142,7 @@ export class AppConfig {
   readonly nodeEnv: NodeEnvironment;
   readonly port: number;
   readonly appOrigin: string;
+  readonly docsEnabled: boolean;
 
   readonly databaseUrl: string;
   readonly databasePoolMax: number;
@@ -175,6 +176,7 @@ export class AppConfig {
     this.nodeEnv = env.readEnum('NODE_ENV', NODE_ENVIRONMENTS, 'development');
     this.port = env.readNumber('PORT', 4000);
     this.appOrigin = env.readString('APP_ORIGIN', 'http://localhost:5173');
+    this.docsEnabled = env.readBoolean('DOCS_ENABLED', this.nodeEnv !== 'production');
 
     this.databaseUrl = env.readRequired('DATABASE_URL');
     this.databasePoolMax = env.readNumber('DB_POOL_MAX', 10);

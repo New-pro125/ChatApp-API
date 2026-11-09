@@ -8,6 +8,8 @@ import { AppConfig } from '@/core/config/app.config.js';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import { type AppDatabase, DatabaseProvider } from '@/core/database/database.provider.js';
 import { ErrorMapper } from '@/core/errors/error-mapper.js';
+import { ApiDocumentBuilder } from '@/core/http/openapi/api-document.builder.js';
+import { OpenApiRegistry } from '@/core/http/openapi/openapi.registry.js';
 import { ApiResponse } from '@/core/http/response/api-response.js';
 import { LoggerProvider } from '@/core/logging/logger.provider.js';
 import { SessionStoreFactory } from '@/core/session/session.store.js';
@@ -42,6 +44,10 @@ export class AppContainer extends Container {
 
     this.bind<ApiResponse>(CORE_TYPES.ApiResponse).to(ApiResponse).inSingletonScope();
     this.bind<ErrorMapper>(CORE_TYPES.ErrorMapper).to(ErrorMapper).inSingletonScope();
+    this.bind<OpenApiRegistry>(CORE_TYPES.OpenApiRegistry).to(OpenApiRegistry).inSingletonScope();
+    this.bind<ApiDocumentBuilder>(CORE_TYPES.ApiDocumentBuilder)
+      .to(ApiDocumentBuilder)
+      .inSingletonScope();
   }
 
   async connect(): Promise<void> {

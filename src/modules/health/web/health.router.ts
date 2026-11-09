@@ -1,17 +1,48 @@
-import { Router } from 'express';
+/// <reference types="zod-openapi" />
+import type { Router } from 'express';
 import { inject, injectable } from 'inversify';
+import { z } from 'zod';
+import { CORE_TYPES } from '@/core/container/core.types.js';
 import type { RequestScopeMiddleware } from '@/core/http/middleware/request-scope.js';
+import { DocumentedRouter } from '@/core/http/openapi/documented-router.js';
+import type { OpenApiRegistry } from '@/core/http/openapi/openapi.registry.js';
+import { successEnvelope } from '@/core/http/openapi/openapi.schemas.js';
+import type { RouteContract } from '@/core/http/openapi/openapi.types.js';
 import { HEALTH_TYPES } from '@/modules/health/health.types.js';
 import type { HealthController } from '@/modules/health/web/health.controller.js';
 
+const healthReportSchema = z
+  .object({
+    status: z.enum(['ok', 'degraded']),
+    checks: z.record(z.string(), z.enum(['up', 'down'])),
+  })
+  .meta({ id: 'HealthReport' });
+
+const healthResponse = successEnvelope(healthReportSchema, 'HealthReportResponse');
+
+const healthContract: RouteContract = {
+  operationId: 'health.check',
+  tags: ['Health'],
+  summary: 'Report dependency health',
+  responses: {
+    200: { description: 'All dependencies are reachable', schema: healthResponse },
+    503: { description: 'One or more dependencies are unavailable', schema: healthResponse },
+  },
+};
+
 @injectable()
 export class HealthRouter {
-  readonly router = Router();
+  readonly router: Router;
 
-  constructor(@inject(HEALTH_TYPES.RequestScope) scope: RequestScopeMiddleware) {
+  constructor(
+    @inject(HEALTH_TYPES.RequestScope) scope: RequestScopeMiddleware,
+    @inject(CORE_TYPES.OpenApiRegistry) registry: OpenApiRegistry,
+  ) {
+    const routes = new DocumentedRouter(registry, '/health');
+    this.router = routes.router;
     this.router.use(scope.handle);
 
-    this.router.get('/', (req, res, next) => {
+    routes.get('/', healthContract, (req, res, next) => {
       return req.container
         .get<HealthController>(HEALTH_TYPES.HealthController)
         .check(req, res, next);
