@@ -1,0 +1,63 @@
+name: inversify-passport
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-inversify}
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5434}:5432"
+    volumes:
+      # PostgreSQL 18 changed PGDATA; mount the parent directory.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-inversify}"
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    command: [ "redis-server", "--appendonly", "yes" ]
+    ports:
+      - "${REDIS_HOST_PORT:-6381}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  adminer:
+    image: adminer:latest
+    profiles: [ "tools" ]
+    ports:
+      - "${ADMINER_HOST_PORT:-8088}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  redis-insight:
+    image: redis/redisinsight:latest
+    profiles: [ "tools" ]
+    ports:
+      - "${REDISINSIGHT_HOST_PORT:-5540}:5540"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  mailpit:
+    image: axllent/mailpit:latest
+    profiles: [ "tools" ]
+    ports:
+      - "${MAILPIT_SMTP_HOST_PORT:-1025}:1025"
+      - "${MAILPIT_UI_HOST_PORT:-8025}:8025"
+
+volumes:
+  pgdata:
+  redisdata:

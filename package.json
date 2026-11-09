@@ -1,0 +1,72 @@
+{
+  "name": "inversify-passport",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Express + Inversify + Passport API with a module-based OOP architecture",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{ recursive: true, force: true })\"",
+    "prebuild": "npm run clean",
+    "build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "check": "biome check --write .",
+    "verify": "npm run typecheck && npm run lint && npm run build",
+    "db:migrate": "node --import dotenv/config ./node_modules/node-pg-migrate/bin/node-pg-migrate.js up",
+    "db:rollback": "node --import dotenv/config ./node_modules/node-pg-migrate/bin/node-pg-migrate.js down",
+    "db:create": "node --import dotenv/config ./node_modules/node-pg-migrate/bin/node-pg-migrate.js create"
+  },
+  "dependencies": {
+    "argon2": "0.45.2",
+    "connect-redis": "10.0.0",
+    "cors": "2.8.6",
+    "dotenv": "18.0.9",
+    "express": "5.3.0",
+    "express-rate-limit": "8.7.3",
+    "express-session": "1.19.0",
+    "helmet": "8.3.0",
+    "inversify": "8.2.4",
+    "nodemailer": "10.3.1",
+    "openid-client": "6.8.9",
+    "otpauth": "9.6.0",
+    "passport": "0.7.0",
+    "passport-github2": "0.1.12",
+    "passport-google-oauth20": "2.0.0",
+    "passport-local": "1.0.0",
+    "passport-strategy": "1.0.0",
+    "pg": "8.23.1",
+    "pino": "10.4.0",
+    "rate-limit-redis": "6.0.2",
+    "redis": "6.3.1",
+    "reflect-metadata": "0.2.2",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.6",
+    "@types/cors": "2.8.19",
+    "@types/express": "5.0.6",
+    "@types/express-session": "1.19.0",
+    "@types/node": "24.19.2",
+    "@types/nodemailer": "8.0.2",
+    "@types/passport": "1.0.17",
+    "@types/passport-github2": "1.2.9",
+    "@types/passport-google-oauth20": "2.0.17",
+    "@types/passport-oauth2": "1.8.0",
+    "@types/passport-strategy": "0.2.38",
+    "@types/pg": "8.23.1",
+    "node-pg-migrate": "9.0.0",
+    "tsc-alias": "1.9.10",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  },
+  "allowScripts": {
+    "argon2@0.45.2": true,
+    "esbuild@0.28.2": true
+  }
+}
