@@ -345,13 +345,44 @@ npm run db:reset     # drop local schemas and rebuild from migrations
 
 ## Docker
 
-`Dockerfile` is retained for production images. Compose runs databases and
-optional tools only; the API is expected to run locally with `npm run dev`.
+`Dockerfile` is retained for production images. Compose provides the backing
+services; the API is expected to run locally with `npm run dev` or as the built
+image.
+
+| Service         | Default port              | Purpose                                        |
+| --------------- | ------------------------- | ---------------------------------------------- |
+| `postgres`      | `5434`                    | PostgreSQL 18                                  |
+| `pgbouncer`     | `6434`                    | Transaction-pooling proxy in front of Postgres |
+| `redis`         | `6381`                    | Sessions, cache, rate limits, queues           |
+| `minio`         | `9000`, console `9001`    | S3-compatible media storage                    |
+| `storage-init`  | —                         | Creates and version-enables the media bucket   |
+| `coturn`        | `3478`, UDP `49160-49200` | TURN relay for WebRTC calls                    |
+| `clamav`        | `3310`                    | Optional upload scanning (`--profile scan`)    |
+| `adminer`       | `8088`                    | Database UI (`--profile tools`)                |
+| `redis-insight` | `5540`                    | Redis UI (`--profile tools`)                   |
+| `mailpit`       | SMTP `1025`, UI `8025`    | Local email testing (`--profile tools`)        |
 
 ```bash
+docker compose up -d postgres pgbouncer redis minio storage-init coturn
+docker compose --profile tools up -d
+docker compose --profile scan up -d clamav
+
 docker build -t inversify-passport .
 docker run --env-file .env -p 4000:4000 inversify-passport
 ```
+
+`pgbouncer` runs in transaction pooling mode. Use it as the production
+`DATABASE_URL` target (host port `6434` locally) once the API is deployed;
+local development can keep pointing at PostgreSQL directly. TURN is configured
+for local use with long-term credentials and no TLS. For a public deployment,
+provide certificates, enable TLS/DTLS, and set coturn's `external-ip` to the
+relay's public address.
+
+MinIO withdrew its public Docker images, so the `minio` service uses the
+Bitnami legacy build of the same S3-compatible server. The API only depends on
+the S3 API, so any S3-compatible backend (including a pinned private mirror)
+can replace it. `storage-init` uses the AWS CLI, not the MinIO client, so bucket
+provisioning keeps working with any compatible endpoint.
 
 ## Path aliases
 
