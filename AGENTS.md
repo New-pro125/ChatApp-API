@@ -8,16 +8,20 @@ before making changes, then read `README.md` for the public API and setup guide.
 - Node 24, TypeScript 7.0.2, ESM (`"type": "module"`)
 - Express 5 with Inversify 8 child containers
 - Passport local, GitHub, Google, and OIDC SSO strategies
-- PostgreSQL 18 through `pg`, Redis-backed sessions
+- PostgreSQL 18 through Drizzle ORM (`pg` driver; PgBouncer in production),
+  Redis-backed sessions
 - Argon2id password hashing
-- Zod request validation, Pino logging, Biome linting/formatting
-- No test suite. Verify with typecheck, lint, build, and targeted manual smoke tests.
+- Zod request validation with generated OpenAPI 3.1 and the Scalar UI
+- Pino and pino-http logging, prom-client metrics, Biome linting/formatting
+- BullMQ, S3-compatible media storage, coturn for WebRTC calls
+- No test suite yet. Vitest and Supertest are installed; verify with typecheck,
+  lint, build, and targeted manual smoke tests.
 
 ## Commands
 
 ```bash
 npm ci
-docker compose up -d postgres redis
+docker compose up -d postgres redis minio storage-init
 npm run db:migrate
 npm run dev
 
@@ -26,17 +30,31 @@ npm run lint        # biome check
 npm run check       # biome check --write
 npm run build       # tsc + tsc-alias
 npm run start       # run dist/index.js
+
+npm run db:generate # generate SQL from the Drizzle schema
+npm run db:migrate  # apply pending Drizzle migrations
+npm run db:check    # detect schema drift
+npm run db:studio   # Drizzle Studio (development only)
+npm run db:reset    # drop local schemas and rebuild from migrations
 ```
 
-Host ports: API `4000`, PostgreSQL `5434`, Redis `6381`, Adminer `8088`,
-RedisInsight `5540`, Mailpit SMTP `1025`, Mailpit UI `8025`.
+Host ports: API `4000`, PostgreSQL `5434`, PgBouncer `6434`, Redis `6381`,
+MinIO `9000` and console `9001`, coturn `3478` plus UDP `49160-49200`,
+Adminer `8088`, RedisInsight `5540`, Mailpit SMTP `1025` and UI `8025`,
+ClamAV `3310` under the `scan` profile.
 
 ## Architecture
 
 ```text
 src/
   app/                 Application lifecycle and HTTP assembly
-  core/                Config, container, database, cache, logging, HTTP, errors, session
+  core/                Config, container, database, cache, logging, HTTP,
+                       metrics, errors, session
+    database/schema/   Drizzle table definitions and the Drizzle Kit barrel
+    http/openapi/      DocumentedRouter, registry, document builder, docs router
+    http/server/       Raw HTTP server, timeouts, graceful shutdown
+    http/logging/      pino-http request logging
+    metrics/           Prometheus registry, HTTP instrumentation, scrape router
   modules/
     auth/              Auth feature module and child container
       data/            Repositories, hashers, email senders, token generation
@@ -53,6 +71,9 @@ src/
 - `Application` wires global middleware, modules, the 404 handler, and the
   global error handler in that order.
 - `ApplicationRunner` owns process startup, signal handling, and shutdown.
+- Modules depend on `core`, never on each other. Put shared cross-module
+  behavior in `core` behind a service or port instead of importing another
+  module's data layer.
 
 ## OOP and dependency-injection rules
 
@@ -172,17 +193,72 @@ Do not regress these behaviors:
 
 ## Database and migrations
 
-- The current repositories use hand-written SQL over a shared `pg.Pool`.
-- Migrations use `node-pg-migrate` under `migrations/`.
-- Drizzle is not adopted. Keep the existing `pg` repositories unless the task
-  explicitly asks for Drizzle. Do not mix Drizzle and raw SQL without a written
-  decision and a migration baseline.
-- Every new repository method must map rows to domain records; do not return
-  raw database rows from services.
-- Wrap unique violations in `UniqueConstraintException`.
-- Use transactions for multi-step writes and always release pooled clients.
-- When adding a migration, use a new timestamped file; never edit an applied
-  migration.
+Drizzle ORM is the only application data-access layer.
+
+- Table definitions live in `src/core/database/schema/*.schema.ts` and are
+  exported once from `schema/index.ts`; that barrel is the Drizzle Kit entry
+  point. Each schema file documents the module that owns its tables.
+- Repositories live in module `data/` layers, inject `CORE_TYPES.Db`, import
+  tables from the schema barrel, and map rows to domain records through a
+  mapper class. Drizzle types never leave the data layer, and services depend
+  on `logic/ports` interfaces, never on repositories directly.
+- Raw `pg.Pool` access (`CORE_TYPES.PgPool`) is reserved for health checks and
+  migration tooling; do not add repositories on the raw pool.
+- Conventions: plural snake_case table names with explicit column names,
+  `uuidv7()` primary keys, `timestamptz` timestamps, `created_at`/`updated_at`
+  on mutable rows, and explicit names for every index, check, and unique
+  constraint.
+- Foreign keys: `CASCADE` for rows owned by their parent, `RESTRICT` for
+  cross-aggregate references. Enforce row invariants with `check` constraints.
+- Use transactions for multi-step writes, keyset pagination for lists, and
+  select only the columns a handler needs. Review the generated SQL and check
+  the query plan for every new index or hot predicate.
+- Wrap unique violations with `UniqueConstraintException` through
+  `PostgresErrorInspector`; never expose raw `pg` errors to services.
+- Migrations are generated with `npm run db:generate`, reviewed as SQL, and
+  applied with `npm run db:migrate`. Never edit an applied migration; generate
+  a new one instead. `npm run db:check` detects drift and `npm run db:reset`
+  rebuilds a local database from scratch.
+- Drizzle Kit connects with `DATABASE_URL`; in production point it directly at
+  PostgreSQL, never at PgBouncer. PgBouncer runs in transaction pooling mode,
+  so avoid session-level PostgreSQL features (advisory locks, LISTEN/NOTIFY,
+  session `SET`s) in request paths.
+
+## API documentation
+
+- Every route is registered through `DocumentedRouter` with a
+  `RouteContract` that carries `operationId` (`module.action`), tags, summary,
+  request schemas, and response schemas. The registry rejects duplicate
+  operations at boot, so a route cannot exist undocumented.
+- The same Zod schemas document requests and validate them in controllers;
+  never maintain a second schema for documentation.
+- Response schemas wrap resources with `successEnvelope`/`errorEnvelope` so
+  the generated document matches the runtime envelope.
+- `GET /api/openapi.json` serves the document and `GET /api/docs` serves the
+  Scalar UI; both are gated by `DOCS_ENABLED` (off by default in production).
+- New public error codes or auth schemes must be reflected in the shared
+  document components (`openapi.schemas.ts` and the security schemes in the
+  document builder).
+
+## HTTP and production hardening
+
+- Never call `app.listen`. `HttpServer` owns listening, socket timeouts,
+  connection limits, and graceful shutdown, tuned through `HttpConfig`
+  environment values.
+- `trust proxy`, CORS origins, the compression threshold, and body limits come
+  from configuration; never derive them from `NODE_ENV` checks.
+- `Application` wires global middleware in a fixed order: request id, request
+  logging, security headers, CORS, compression, cache control, metrics, body
+  parsing, authentication, module routers, 404, then the global error handler.
+- `/health/live` is dependency-free. `/health/ready` checks PostgreSQL and
+  Redis and caches its result for `HEALTH_CACHE_TTL_MS` so probes do not
+  hammer dependencies.
+- Shut down through `Application.stop()`: stop accepting connections, drain
+  keep-alive sockets, wait for the shutdown timeout, then close remaining
+  connections before disposing modules and the container.
+- pino-http request logs carry request ids; cookies, authorization headers,
+  and credentials are redacted. prom-client metrics are exposed on `/metrics`
+  when enabled.
 
 ## Configuration and runtime
 
