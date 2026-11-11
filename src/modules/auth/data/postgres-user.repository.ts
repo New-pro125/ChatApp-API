@@ -118,4 +118,11 @@ export class PostgresUserRepository implements UserRepository {
       })
       .where(eq(users.id, id));
   }
+
+  async updateSessionVersion(id: string): Promise<void> {
+    await this.db
+      .update(users)
+      .set({ sessionVersion: sql`${users.sessionVersion} + 1`, updatedAt: sql`now()` })
+      .where(eq(users.id, id));
+  }
 }

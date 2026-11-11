@@ -35,6 +35,8 @@ const STATUS_BY_DOMAIN_CODE: Partial<Record<ErrorCode, number>> = {
   [ErrorCode.MFA_DISABLED]: 400,
   [ErrorCode.OAUTH_FAILED]: 401,
   [ErrorCode.PROVIDER_DISABLED]: 404,
+  [ErrorCode.REFRESH_TOKEN_INVALID]: 401,
+  [ErrorCode.OAUTH_GRANT_INVALID]: 401,
 };
 
 /**

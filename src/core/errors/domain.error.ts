@@ -17,6 +17,25 @@ export class InvalidCredentialsException extends DomainException {
   }
 }
 
+export class InvalidAccessTokenException extends DomainException {
+  readonly code = ErrorCode.UNAUTHORIZED;
+
+  constructor(message = 'Access token is invalid or expired', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}
+
+export class InvalidRefreshTokenException extends DomainException {
+  readonly code = ErrorCode.REFRESH_TOKEN_INVALID;
+
+  constructor(
+    message = 'Refresh token is invalid, expired, or revoked',
+    options?: AppErrorOptions,
+  ) {
+    super(message, options);
+  }
+}
+
 export class EmailAlreadyRegisteredException extends DomainException {
   readonly code = ErrorCode.CONFLICT;
 
@@ -129,6 +148,17 @@ export class OAuthFailedException extends DomainException {
   readonly code = ErrorCode.OAUTH_FAILED;
 
   constructor(message = 'OAuth authentication failed', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}
+
+export class InvalidOAuthGrantException extends DomainException {
+  readonly code = ErrorCode.OAUTH_GRANT_INVALID;
+
+  constructor(
+    message = 'The OAuth grant code is invalid, expired, or already used',
+    options?: AppErrorOptions,
+  ) {
     super(message, options);
   }
 }

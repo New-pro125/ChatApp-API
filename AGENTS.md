@@ -9,7 +9,8 @@ before making changes, then read `README.md` for the public API and setup guide.
 - Express 5 with Inversify 8 child containers
 - Passport local, GitHub, Google, and OIDC SSO strategies
 - PostgreSQL 18 through Drizzle ORM (`pg` driver; PgBouncer in production),
-  Redis-backed sessions
+  Redis-backed rate limiting, token denylist, and OAuth state
+- EdDSA (Ed25519) access tokens with rotating single-use refresh tokens
 - Argon2id password hashing
 - Zod request validation with generated OpenAPI 3.1 and the Scalar UI
 - Pino and pino-http logging, prom-client metrics, Biome linting/formatting
@@ -49,7 +50,7 @@ ClamAV `3310` under the `scan` profile.
 src/
   app/                 Application lifecycle and HTTP assembly
   core/                Config, container, database, cache, logging, HTTP,
-                       metrics, errors, session
+                       metrics, errors, auth tokens
     database/schema/   Drizzle table definitions and the Drizzle Kit barrel
     http/openapi/      DocumentedRouter, registry, document builder, docs router
     http/server/       Raw HTTP server, timeouts, graceful shutdown
@@ -57,11 +58,11 @@ src/
     metrics/           Prometheus registry, HTTP instrumentation, scrape router
   modules/
     auth/              Auth feature module and child container
-      data/            Repositories, hashers, email senders, token generation
+      data/            Repositories, hashers, email senders, token stores
       logic/           Entities, ports, services
       web/             Controllers, DTOs, routers, Passport strategies
     health/            Health feature module and child container
-  types/               Ambient Express, session, environment, Passport declarations
+  types/               Ambient Express, environment, Passport declarations
 ```
 
 - `AppContainer` is the root container. Each module creates a child container
@@ -170,16 +171,16 @@ Do not regress these behaviors:
 - `POST /api/auth/password/forgot` always returns `202`, whether or not the
   email exists.
 - OTP verification returns a short-lived, single-use reset token.
-- A successful password reset increments `users.session_version`, invalidating
-  existing sessions.
+- A successful password reset increments `users.session_version` and revokes
+  every refresh token for the account, invalidating all existing sessions.
 - Reused or expired reset tokens are rejected.
 - OAuth/OIDC accounts require a verified provider email and are linked to an
   existing user by verified email when possible.
-- Password authentication alone never creates a session when MFA is enabled; it
+- Password authentication alone never issues tokens when MFA is enabled; it
   returns a short-lived, single-use challenge instead.
 - OAuth/OIDC logins for MFA-enabled users follow the same challenge flow before
-  a session is established. Browser callbacks keep the challenge in the
-  session and redirect to `OAUTH_MFA_REDIRECT`.
+  tokens are issued. JSON callbacks return the challenge, browser callbacks
+  redirect to `OAUTH_MFA_REDIRECT` with the challenge in the query.
 - TOTP secrets are encrypted with AES-256-GCM through `MfaSecretCipher`.
   Challenge tokens and recovery codes are stored only as hashes.
 - A TOTP time step is single-use; reject replays through
@@ -187,9 +188,21 @@ Do not regress these behaviors:
 - Enrollment, disable, and recovery-code regeneration go through
   `MfaService`; do not duplicate TOTP or recovery-code validation in
   controllers.
-- Session cookies are configured through `SessionCookieOptions`; do not
-  hand-build cookie options in controllers.
-- Passport serialization uses `SessionPrincipal` with `sessionVersion`.
+- Access tokens are short-lived EdDSA JWTs signed by `AccessTokenService` and
+  verified by `RequireBearerAuthMiddleware`, which resolves the user through
+  the root-scoped `PrincipalStore` and rejects stale `sessionVersion` claims.
+- Refresh tokens are single-use and hashed at rest. Rotation issues a
+  successor in the same family; presenting a rotated or revoked token revokes
+  the entire family (reuse detection) and both sides must re-authenticate.
+- `TokenService` is the only issuer and rotator of token pairs; controllers
+  never construct or verify tokens themselves.
+- OAuth state lives in Redis behind the opaque `OAUTH_STATE_COOKIE_NAME`
+  cookie through `OAuthStateStore`; passport-oauth2 state and OIDC PKCE
+  verifiers never reach the browser.
+- Browser OAuth callbacks redirect with a single-use grant code exchanged at
+  `POST /api/auth/token/grant`; JSON callbacks receive the token pair directly.
+- The Redis denylist in `AuthDenylist` fails open when Redis errors, so a
+  Redis outage degrades to TTL-only expiry rather than locking everyone out.
 
 ## Database and migrations
 

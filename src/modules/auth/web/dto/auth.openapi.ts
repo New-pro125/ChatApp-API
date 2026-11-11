@@ -9,16 +9,20 @@ import {
 import type { RouteContract } from '@/core/http/openapi/openapi.types.js';
 import {
   confirmEnrollmentSchema,
+  exchangeGrantSchema,
   forgotPasswordSchema,
   loginSchema,
+  logoutSchema,
   mfaCodeRequestSchema,
+  refreshSchema,
   registerSchema,
   resetPasswordSchema,
+  revokeSessionParamsSchema,
   verifyMfaSchema,
   verifyOtpSchema,
 } from '@/modules/auth/web/dto/auth.schemas.js';
 
-const sessionSecurity = [{ sessionCookie: [] }] as const;
+const bearerSecurity = [{ bearerAuth: [] }] as const;
 
 export const authenticatedUserSchema = z
   .object({
@@ -31,6 +35,37 @@ export const authenticatedUserSchema = z
     mfaEnrolledAt: z.iso.datetime().nullable(),
   })
   .meta({ id: 'AuthenticatedUser' });
+
+export const issuedTokensSchema = z
+  .object({
+    accessToken: z.string(),
+    refreshToken: z.string(),
+    tokenType: z.literal('Bearer'),
+    expiresIn: z.number().int().min(1),
+    refreshExpiresAt: z.iso.datetime(),
+  })
+  .meta({ id: 'IssuedTokens' });
+
+export const authenticationResultSchema = z
+  .object({
+    user: authenticatedUserSchema,
+    tokens: issuedTokensSchema,
+  })
+  .meta({ id: 'AuthenticationResult' });
+
+export const activeSessionSchema = z
+  .object({
+    id: z.uuid(),
+    deviceName: z.string().nullable(),
+    deviceType: z.string().nullable(),
+    clientIp: z.string().nullable(),
+    userAgent: z.string().nullable(),
+    createdAt: z.iso.datetime(),
+    lastUsedAt: z.iso.datetime().nullable(),
+    expiresAt: z.iso.datetime(),
+    current: z.boolean(),
+  })
+  .meta({ id: 'ActiveSession' });
 
 export const mfaChallengeSchema = z
   .object({
@@ -69,11 +104,16 @@ export const resetTokenSchema = z
   .meta({ id: 'PasswordResetToken' });
 
 const userResponse = successEnvelope(authenticatedUserSchema, 'AuthenticatedUserResponse');
+const authenticationResponse = successEnvelope(
+  authenticationResultSchema,
+  'AuthenticationResultResponse',
+);
 const mfaChallengeResponse = successEnvelope(mfaChallengeSchema, 'MfaChallengeResponse');
 const enrollmentResponse = successEnvelope(mfaEnrollmentStartSchema, 'MfaEnrollmentStartResponse');
 const recoveryCodesResponse = successEnvelope(recoveryCodesSchema, 'MfaRecoveryCodesResponse');
 const mfaStatusResponse = successEnvelope(mfaStatusSchema, 'MfaStatusResponse');
 const resetTokenResponse = successEnvelope(resetTokenSchema, 'PasswordResetTokenResponse');
+const sessionsResponse = successEnvelope(z.array(activeSessionSchema), 'ActiveSessionListResponse');
 const nullResponse = successEnvelope(z.null());
 
 const conflict = {
@@ -92,10 +132,10 @@ export const authContracts = {
     operationId: 'auth.register',
     tags: ['Auth'],
     summary: 'Register a new account',
-    description: 'Creates an account, starts a session, and sends an email verification code.',
+    description: 'Creates an account and returns its access and refresh tokens.',
     request: { body: registerSchema },
     responses: {
-      201: { description: 'Account created', schema: userResponse },
+      201: { description: 'Account created', schema: authenticationResponse },
       ...commonErrorResponses,
       409: conflict,
     },
@@ -105,10 +145,10 @@ export const authContracts = {
     tags: ['Auth'],
     summary: 'Log in with email and password',
     description:
-      'Returns 202 with a single-use MFA challenge when the account has MFA enabled; no session is created until the challenge is verified.',
+      'Returns 202 with a single-use MFA challenge when the account has MFA enabled; no tokens are issued until the challenge is verified.',
     request: { body: loginSchema },
     responses: {
-      200: { description: 'Authenticated', schema: userResponse },
+      200: { description: 'Authenticated', schema: authenticationResponse },
       202: { description: 'MFA challenge required', schema: mfaChallengeResponse },
       ...commonErrorResponses,
     },
@@ -116,7 +156,23 @@ export const authContracts = {
   logout: {
     operationId: 'auth.logout',
     tags: ['Auth'],
-    summary: 'Log out the current session',
+    summary: 'Log out the current device',
+    description:
+      'Revokes the presented access token immediately and, when the refresh token is supplied, stops its lineage from refreshing.',
+    security: bearerSecurity,
+    request: { body: logoutSchema },
+    responses: {
+      204: noContentResponse,
+      ...commonErrorResponses,
+    },
+  },
+  logoutAll: {
+    operationId: 'auth.logoutAll',
+    tags: ['Auth'],
+    summary: 'Log out every device',
+    description:
+      'Bumps the session version and revokes every refresh token, so all outstanding tokens are rejected immediately.',
+    security: bearerSecurity,
     responses: {
       204: noContentResponse,
       ...commonErrorResponses,
@@ -126,7 +182,7 @@ export const authContracts = {
     operationId: 'auth.me',
     tags: ['Auth'],
     summary: 'Return the authenticated user',
-    security: sessionSecurity,
+    security: bearerSecurity,
     responses: {
       200: { description: 'Authenticated user', schema: userResponse },
       ...commonErrorResponses,
@@ -138,7 +194,7 @@ export const authContracts = {
     summary: 'Complete a pending MFA challenge',
     request: { body: verifyMfaSchema },
     responses: {
-      200: { description: 'MFA verified and session created', schema: userResponse },
+      200: { description: 'MFA verified and tokens issued', schema: authenticationResponse },
       ...commonErrorResponses,
     },
   },
@@ -146,7 +202,7 @@ export const authContracts = {
     operationId: 'auth.mfa.enroll',
     tags: ['MFA'],
     summary: 'Start TOTP enrollment',
-    security: sessionSecurity,
+    security: bearerSecurity,
     responses: {
       200: { description: 'TOTP secret and otpauth URI', schema: enrollmentResponse },
       ...commonErrorResponses,
@@ -157,7 +213,7 @@ export const authContracts = {
     operationId: 'auth.mfa.enroll.confirm',
     tags: ['MFA'],
     summary: 'Confirm TOTP enrollment and receive recovery codes',
-    security: sessionSecurity,
+    security: bearerSecurity,
     request: { body: confirmEnrollmentSchema },
     responses: {
       200: { description: 'MFA enabled and recovery codes issued', schema: recoveryCodesResponse },
@@ -169,7 +225,7 @@ export const authContracts = {
     operationId: 'auth.mfa.status',
     tags: ['MFA'],
     summary: 'Return MFA enrollment status',
-    security: sessionSecurity,
+    security: bearerSecurity,
     responses: {
       200: { description: 'MFA status', schema: mfaStatusResponse },
       ...commonErrorResponses,
@@ -179,7 +235,7 @@ export const authContracts = {
     operationId: 'auth.mfa.disable',
     tags: ['MFA'],
     summary: 'Disable MFA after verifying a TOTP code',
-    security: sessionSecurity,
+    security: bearerSecurity,
     request: { body: mfaCodeRequestSchema },
     responses: {
       204: noContentResponse,
@@ -191,7 +247,7 @@ export const authContracts = {
     operationId: 'auth.mfa.recovery-codes.regenerate',
     tags: ['MFA'],
     summary: 'Replace recovery codes after verifying a TOTP code',
-    security: sessionSecurity,
+    security: bearerSecurity,
     request: { body: mfaCodeRequestSchema },
     responses: {
       200: { description: 'New recovery codes', schema: recoveryCodesResponse },
@@ -224,8 +280,59 @@ export const authContracts = {
     operationId: 'auth.password.reset',
     tags: ['Password'],
     summary: 'Set a new password with a reset token',
-    description: 'Increments the session version, invalidating all previous sessions.',
+    description:
+      'Increments the session version and revokes every refresh token, invalidating all previous tokens.',
     request: { body: resetPasswordSchema },
+    responses: {
+      204: noContentResponse,
+      ...commonErrorResponses,
+    },
+  },
+} satisfies Record<string, RouteContract>;
+
+export const tokenContracts = {
+  refresh: {
+    operationId: 'auth.token.refresh',
+    tags: ['Auth'],
+    summary: 'Exchange a refresh token for a new token pair',
+    description:
+      'Refresh tokens are single-use; every call rotates the token. Presenting a rotated or revoked token revokes the whole token family.',
+    request: { body: refreshSchema },
+    responses: {
+      200: { description: 'Rotated token pair', schema: authenticationResponse },
+      ...commonErrorResponses,
+    },
+  },
+  exchangeGrant: {
+    operationId: 'auth.token.grant',
+    tags: ['Auth'],
+    summary: 'Exchange an OAuth grant code for tokens',
+    description:
+      'Browser OAuth callbacks redirect with a single-use grant code; the client exchanges it once for the token pair.',
+    request: { body: exchangeGrantSchema },
+    responses: {
+      200: { description: 'Token pair issued', schema: authenticationResponse },
+      ...commonErrorResponses,
+    },
+  },
+  listSessions: {
+    operationId: 'auth.sessions.list',
+    tags: ['Auth'],
+    summary: 'List the active sessions of the current user',
+    security: bearerSecurity,
+    responses: {
+      200: { description: 'Active sessions, newest first', schema: sessionsResponse },
+      ...commonErrorResponses,
+    },
+  },
+  revokeSession: {
+    operationId: 'auth.sessions.revoke',
+    tags: ['Auth'],
+    summary: 'Revoke one session of the current user',
+    description:
+      'Marks the refresh token inactive and denies its outstanding access tokens. Use this to sign out another device.',
+    security: bearerSecurity,
+    request: { params: revokeSessionParamsSchema },
     responses: {
       204: noContentResponse,
       ...commonErrorResponses,

@@ -6,8 +6,12 @@ export const CORE_TYPES = {
   Db: Symbol.for('Core.Db'),
   RedisClient: Symbol.for('Core.RedisClient'),
 
-  SessionStore: Symbol.for('Core.SessionStore'),
   Passport: Symbol.for('Core.Passport'),
+
+  AccessTokenService: Symbol.for('Core.AccessTokenService'),
+  AuthDenylist: Symbol.for('Core.AuthDenylist'),
+  PrincipalStore: Symbol.for('Core.PrincipalStore'),
+  RequireAuth: Symbol.for('Core.RequireAuth'),
 
   ApiResponse: Symbol.for('Core.ApiResponse'),
   ErrorMapper: Symbol.for('Core.ErrorMapper'),

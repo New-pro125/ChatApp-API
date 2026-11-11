@@ -128,6 +128,49 @@ export const mfaChallenges = pgTable(
   ],
 );
 
+/**
+ * Rotating refresh tokens: one row per issued token, grouped into families.
+ *
+ * A family groups the tokens minted from a single login. Presenting a token
+ * that was already rotated or revoked is treated as theft: the whole family is
+ * revoked and the user must authenticate again.
+ */
+export const refreshTokens = pgTable(
+  'refresh_tokens',
+  {
+    id: uuid('id').primaryKey().default(sql`uuidv7()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    familyId: uuid('family_id').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    deviceName: text('device_name'),
+    deviceType: text('device_type'),
+    clientIp: text('client_ip'),
+    userAgent: text('user_agent'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    rotatedAt: timestamp('rotated_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    revokedReason: text('revoked_reason'),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('refresh_tokens_token_hash_unique').on(table.tokenHash),
+    index('refresh_tokens_user_id_created_at_index').on(table.userId, table.createdAt.desc()),
+    index('refresh_tokens_family_id_index').on(table.familyId),
+    index('refresh_tokens_active_index')
+      .on(table.userId, table.createdAt.desc())
+      .where(sql`${table.rotatedAt} is null and ${table.revokedAt} is null`),
+    check(
+      'refresh_tokens_revocation_consistency',
+      sql`${table.revokedAt} is null or ${table.revokedReason} is not null`,
+    ),
+    // No constraint ties `rotated_at` to `revoked_at`: reuse detection revokes
+    // entire families, which legitimately revokes rows that already rotated.
+  ],
+);
+
 export const mfaRecoveryCodes = pgTable(
   'mfa_recovery_codes',
   {

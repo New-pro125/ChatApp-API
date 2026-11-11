@@ -8,6 +8,7 @@ import { CORE_TYPES } from '@/core/container/core.types.js';
 import { AUTH_TYPES } from '@/modules/auth/auth.types.js';
 import { OAuthProfile } from '@/modules/auth/logic/entities/oauth-profile.js';
 import type { OAuthLoginService } from '@/modules/auth/logic/oauth-login.service.js';
+import type { OAuthStateStore } from '@/modules/auth/logic/ports/oauth-state.store.js';
 import type {
   PassportProvider,
   PassportStatic,
@@ -27,6 +28,7 @@ class OidcStrategy extends PassportStrategy {
     private readonly configuration: client.Configuration,
     private readonly oauth: OAuthLoginService,
     private readonly logger: Logger,
+    private readonly states: OAuthStateStore,
     private readonly issuer: string,
     private readonly callbackUrl: string,
     private readonly scope: string,
@@ -59,7 +61,7 @@ class OidcStrategy extends PassportStrategy {
     const codeVerifier = client.randomPKCECodeVerifier();
     const codeChallenge = await client.calculatePKCECodeChallenge(codeVerifier);
 
-    req.session.oidc = { state, codeVerifier };
+    await this.states.save(req, { state, codeVerifier });
 
     const authorizationUrl = client.buildAuthorizationUrl(this.configuration, {
       redirect_uri: this.callbackUrl,
@@ -73,14 +75,12 @@ class OidcStrategy extends PassportStrategy {
   }
 
   private async completeAuthorization(req: Request): Promise<void> {
-    const saved = req.session.oidc;
+    const saved = await this.states.consume(req);
 
-    if (!saved) {
-      this.fail({ message: 'Missing OIDC session state' }, 401);
+    if (!(saved?.state && saved.codeVerifier)) {
+      this.fail({ message: 'Missing OIDC request state' }, 401);
       return;
     }
-
-    req.session.oidc = null;
 
     const currentUrl = new URL(req.originalUrl, this.callbackUrl);
     const tokens = await client.authorizationCodeGrant(this.configuration, currentUrl, {
@@ -117,6 +117,7 @@ export class OidcPassportProvider implements PassportProvider {
     @inject(CORE_TYPES.Config) private readonly config: AppConfig,
     @inject(AUTH_TYPES.OAuthLoginService)
     private readonly oauth: OAuthLoginService,
+    @inject(AUTH_TYPES.OAuthStateStore) private readonly states: OAuthStateStore,
     @inject(CORE_TYPES.Logger) private readonly logger: Logger,
   ) {
     this.scope = config.sso.scopes;
@@ -135,6 +136,7 @@ export class OidcPassportProvider implements PassportProvider {
         configuration,
         this.oauth,
         this.logger,
+        this.states,
         settings.issuer,
         settings.callbackUrl,
         settings.scopes,

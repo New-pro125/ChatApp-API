@@ -1,7 +1,7 @@
 import compression from 'compression';
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express, { type Express } from 'express';
-import type { Store } from 'express-session';
 import helmet from 'helmet';
 import type { AppContainer, PassportStatic } from '@/core/container/app.container.js';
 import { CORE_TYPES } from '@/core/container/core.types.js';
@@ -17,7 +17,6 @@ import { HttpServer } from '@/core/http/server/http-server.js';
 import { MetricsRouter } from '@/core/metrics/metrics.router.js';
 import type { MetricsService } from '@/core/metrics/metrics.service.js';
 import type { AppModule } from '@/core/modules/app.module.js';
-import { SessionMiddleware } from '@/core/session/session.middleware.js';
 import { AuthModule } from '@/modules/auth/auth.module.js';
 import { HealthModule } from '@/modules/health/health.module.js';
 
@@ -30,7 +29,6 @@ export class Application {
   constructor(private readonly container: AppContainer) {
     const { config, logger } = container;
     const passport = container.get<PassportStatic>(CORE_TYPES.Passport);
-    const sessionStore = container.get<Store>(CORE_TYPES.SessionStore);
     const errorMapper = container.get<ErrorMapper>(CORE_TYPES.ErrorMapper);
     const apiResponse = container.get<ApiResponse>(CORE_TYPES.ApiResponse);
     const metrics = container.get<MetricsService>(CORE_TYPES.Metrics);
@@ -76,15 +74,14 @@ export class Application {
     });
 
     this.app.use(metrics.middleware);
+    this.app.use(cookieParser());
     this.app.use(express.json({ limit: config.http.bodyLimitBytes }));
 
     if (config.http.metricsEnabled) {
       this.app.use('/metrics', new MetricsRouter(metrics, config).router);
     }
 
-    this.app.use(new SessionMiddleware(config, sessionStore).handle);
     this.app.use(passport.initialize());
-    this.app.use(passport.session());
 
     this.modules = [new HealthModule(container), new AuthModule(container, config)];
 

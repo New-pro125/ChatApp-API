@@ -10,9 +10,14 @@ declare global {
       DATABASE_URL?: string;
       REDIS_URL?: string;
 
-      SESSION_SECRET?: string;
-      SESSION_COOKIE_NAME?: string;
-      SESSION_TTL_SECONDS?: string;
+      ACCESS_TOKEN_PRIVATE_KEY?: string;
+      ACCESS_TOKEN_ISSUER?: string;
+      ACCESS_TOKEN_AUDIENCE?: string;
+      ACCESS_TOKEN_TTL_SECONDS?: string;
+      REFRESH_TOKEN_TTL_SECONDS?: string;
+      OAUTH_GRANT_TTL_SECONDS?: string;
+      OAUTH_STATE_TTL_SECONDS?: string;
+      OAUTH_STATE_COOKIE_NAME?: string;
 
       LOG_LEVEL?: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
 

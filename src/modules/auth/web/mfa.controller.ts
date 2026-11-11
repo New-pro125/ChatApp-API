@@ -8,7 +8,7 @@ import type { ApiResponse } from '@/core/http/response/api-response.js';
 import { AUTH_TYPES } from '@/modules/auth/auth.types.js';
 import type { AuthenticatedUser } from '@/modules/auth/logic/entities/authenticated-user.js';
 import type { MfaService } from '@/modules/auth/logic/mfa.service.js';
-import type { SessionManager } from '@/modules/auth/logic/session-manager.js';
+import type { TokenService } from '@/modules/auth/logic/token.service.js';
 import {
   confirmEnrollmentSchema,
   mfaCodeRequestSchema,
@@ -21,7 +21,7 @@ type PassportStatic = typeof passport;
 export class MfaController {
   constructor(
     @inject(AUTH_TYPES.MfaService) private readonly mfa: MfaService,
-    @inject(AUTH_TYPES.SessionManager) private readonly session: SessionManager,
+    @inject(AUTH_TYPES.TokenService) private readonly tokens: TokenService,
     @inject(CORE_TYPES.Passport) private readonly passport: PassportStatic,
     @inject(CORE_TYPES.ApiResponse) private readonly response: ApiResponse,
   ) {}
@@ -80,7 +80,7 @@ export class MfaController {
     this.passport.authenticate(
       'totp',
       { session: false },
-      (error: unknown, user: Express.User | false | null | undefined) => {
+      async (error: unknown, user: Express.User | false | null | undefined) => {
         if (error) {
           next(error);
           return;
@@ -91,12 +91,23 @@ export class MfaController {
           return;
         }
 
-        this.session
-          .establish(req, user)
-          .then(
-            () => this.response.ok(res, user, { message: 'Two-factor authentication verified' }),
-            next,
+        try {
+          const tokens = await this.tokens.issue(user, {
+            deviceName: input.deviceName,
+            deviceType: input.deviceType,
+            clientIp: req.ip ?? null,
+            userAgent:
+              typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : null,
+          });
+
+          this.response.ok(
+            res,
+            { user, tokens },
+            { message: 'Two-factor authentication verified' },
           );
+        } catch (tokenError) {
+          next(tokenError);
+        }
       },
     )(req, res, next);
   };

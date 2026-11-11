@@ -19,4 +19,6 @@ export interface UserRepository {
   ): Promise<void>;
   clearLoginFailures(id: string): Promise<void>;
   updatePassword(id: string, passwordHash: string): Promise<void>;
+  /** Bumps the session version, invalidating every outstanding access token. */
+  updateSessionVersion(id: string): Promise<void>;
 }

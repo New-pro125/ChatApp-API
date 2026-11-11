@@ -9,7 +9,7 @@ See `AGENTS.md` for the conventions AI agents and contributors should follow.
 - Node 24, TypeScript 7.0.2, ESM
 - Express 5, Inversify 8 child containers
 - Passport local, GitHub, Google, OIDC SSO, and TOTP strategies
-- Redis-backed `express-session`
+- EdDSA access tokens with rotating single-use refresh tokens
 - PostgreSQL 18
 - Argon2id password hashing
 - Zod request validation, Pino logging, unified response envelopes, layered error handling
@@ -20,14 +20,14 @@ See `AGENTS.md` for the conventions AI agents and contributors should follow.
 ```
 src/
   app/                 Application bootstrap and HTTP assembly
-  core/                Config, container, database, cache, logging, session, HTTP middleware
+  core/                Config, container, database, cache, logging, auth, HTTP middleware
   modules/
     auth/              Auth module (child container)
-      data/            Repositories, hashers, email senders
+      data/            Repositories, hashers, email senders, token stores
       logic/           Entities, ports, services
       web/             Controllers, DTOs, routers, Passport strategies
     health/            Health module (child container)
-  types/               Ambient Express, session, environment, and Passport declarations
+  types/               Ambient Express, environment, and Passport declarations
 ```
 
 Each module owns a child container whose parent is the root `AppContainer`. Every request gets its own container scoped to the module container and is disposed when the response closes.
@@ -91,14 +91,34 @@ production and `false` in production; set it explicitly to expose or hide the
 docs in a deployed environment. The runtime registry rejects duplicate
 `operationId` values and duplicate method/path pairs during startup.
 
-### Session authentication
+### Token authentication
 
-| Method | Path                 | Description                              |
-| ------ | -------------------- | ---------------------------------------- |
-| `POST` | `/api/auth/register` | Create a user and start a session        |
-| `POST` | `/api/auth/login`    | Authenticate and start a session         |
-| `POST` | `/api/auth/logout`   | Destroy the session and clear the cookie |
-| `GET`  | `/api/auth/me`       | Return the authenticated user            |
+| Method   | Path                      | Description                                      |
+| -------- | ------------------------- | ------------------------------------------------ |
+| `POST`   | `/api/auth/register`      | Create a user and receive the initial token pair |
+| `POST`   | `/api/auth/login`         | Authenticate and receive a token pair            |
+| `POST`   | `/api/auth/token/refresh` | Rotate the refresh token and receive a new pair  |
+| `POST`   | `/api/auth/token/grant`   | Exchange an OAuth grant code for a token pair    |
+| `POST`   | `/api/auth/logout`        | Revoke the calling device's tokens               |
+| `POST`   | `/api/auth/logout-all`    | Revoke every device for the account              |
+| `GET`    | `/api/auth/me`            | Return the authenticated user                    |
+| `GET`    | `/api/auth/sessions`      | List active refresh-token sessions               |
+| `DELETE` | `/api/auth/sessions/:id`  | Revoke one session                               |
+
+Successful authentication returns `{ user, tokens }` where `tokens` is
+`{ accessToken, refreshToken, tokenType, expiresIn, refreshExpiresAt }`.
+Access tokens are short-lived EdDSA (Ed25519) JWTs carrying the user id,
+session version, and the id of the refresh token they were issued with; send
+them as `Authorization: Bearer <accessToken>`. The user record is resolved
+per request, so password changes, bans, and global logouts take effect
+immediately instead of at token expiry.
+
+Refresh tokens are single-use and stored as hashes. Every refresh rotates the
+presented token within its family; presenting an already-rotated or revoked
+token is treated as theft and revokes the entire family, forcing both the
+attacker and the victim to re-authenticate. Logging out one device revokes its
+refresh lineage and denylists the outstanding access token in Redis; the
+denylist fails open (tokens then expire by TTL) if Redis is unavailable.
 
 ### Two-factor authentication
 
@@ -118,17 +138,18 @@ AES-256-GCM using `MFA_ENCRYPTION_KEY`.
 
 When a user with MFA enabled logs in with a password, `POST /api/auth/login`
 returns `202` with `{ mfaRequired: true, challengeToken, expiresAt }` instead of
-creating a session. Submit the authenticator or recovery code to
-`POST /api/auth/mfa/verify` to establish the session. Challenge tokens are
+issuing tokens. Submit the authenticator or recovery code to
+`POST /api/auth/mfa/verify` to receive the token pair. Challenge tokens are
 hashed in the database, short-lived, single-use, attempt-limited, and rejected
 after expiry. A TOTP step can only be used once.
 
 OAuth and OIDC callbacks behave the same way: JSON clients receive `202` with a
-challenge, while browser callbacks store the challenge in the session and
-redirect to `OAUTH_MFA_REDIRECT`.
+challenge, while browser callbacks redirect to `OAUTH_MFA_REDIRECT` with the
+challenge token and expiry in the query, and the web client posts them to
+`POST /api/auth/mfa/verify`.
 
-Protected enrollment, status, disable, and recovery-code routes require an
-authenticated session. Disabling MFA or regenerating recovery codes requires a
+Protected enrollment, status, disable, and recovery-code routes require a valid
+access token. Disabling MFA or regenerating recovery codes requires a
 current authenticator code.
 
 ### Password reset
@@ -141,8 +162,8 @@ current authenticator code.
 
 The forgot endpoint always returns `202` so it does not reveal whether an email
 is registered. Verifying an OTP returns a short-lived reset token. A successful
-reset increments the user's session version, invalidating every existing
-session for that account.
+reset increments the user's session version and revokes every refresh token for
+the account, invalidating all existing sessions.
 
 ### OAuth2 and OIDC
 
@@ -158,6 +179,12 @@ session for that account.
 A provider is enabled only when its client ID, secret, and callback URL are all
 set. OAuth accounts are linked to existing users by verified email; if no
 matching user exists, one is created. Unverified provider emails are rejected.
+
+OAuth state is kept server-side in Redis behind an opaque httpOnly cookie, so
+PKCE code verifiers never reach the browser. JSON clients receive the token pair
+directly from the callback; browser callbacks redirect to
+`OAUTH_SUCCESS_REDIRECT` with a single-use grant code that the web client
+exchanges at `POST /api/auth/token/grant`.
 
 ### Health and metrics
 
@@ -309,10 +336,12 @@ Required:
 
 - `DATABASE_URL`
 - `REDIS_URL`
-- `SESSION_SECRET`
+- `ACCESS_TOKEN_PRIVATE_KEY` in production: a base64url-encoded 32-byte Ed25519
+  seed. Development falls back to an ephemeral key, which invalidates tokens on
+  every restart.
 - `MFA_ENCRYPTION_KEY` when `MFA_ENABLED=true` (the default)
 
-Generate an MFA key with:
+Generate either key with:
 
 ```bash
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
@@ -349,18 +378,18 @@ npm run db:reset     # drop local schemas and rebuild from migrations
 services; the API is expected to run locally with `npm run dev` or as the built
 image.
 
-| Service         | Default port              | Purpose                                        |
-| --------------- | ------------------------- | ---------------------------------------------- |
-| `postgres`      | `5434`                    | PostgreSQL 18                                  |
-| `pgbouncer`     | `6434`                    | Transaction-pooling proxy in front of Postgres |
-| `redis`         | `6381`                    | Sessions, cache, rate limits, queues           |
-| `minio`         | `9000`, console `9001`    | S3-compatible media storage                    |
-| `storage-init`  | —                         | Creates and version-enables the media bucket   |
-| `coturn`        | `3478`, UDP `49160-49200` | TURN relay for WebRTC calls                    |
-| `clamav`        | `3310`                    | Optional upload scanning (`--profile scan`)    |
-| `adminer`       | `8088`                    | Database UI (`--profile tools`)                |
-| `redis-insight` | `5540`                    | Redis UI (`--profile tools`)                   |
-| `mailpit`       | SMTP `1025`, UI `8025`    | Local email testing (`--profile tools`)        |
+| Service         | Default port              | Purpose                                          |
+| --------------- | ------------------------- | ------------------------------------------------ |
+| `postgres`      | `5434`                    | PostgreSQL 18                                    |
+| `pgbouncer`     | `6434`                    | Transaction-pooling proxy in front of Postgres   |
+| `redis`         | `6381`                    | Token denylist, OAuth state, rate limits, queues |
+| `minio`         | `9000`, console `9001`    | S3-compatible media storage                      |
+| `storage-init`  | —                         | Creates and version-enables the media bucket     |
+| `coturn`        | `3478`, UDP `49160-49200` | TURN relay for WebRTC calls                      |
+| `clamav`        | `3310`                    | Optional upload scanning (`--profile scan`)      |
+| `adminer`       | `8088`                    | Database UI (`--profile tools`)                  |
+| `redis-insight` | `5540`                    | Redis UI (`--profile tools`)                     |
+| `mailpit`       | SMTP `1025`, UI `8025`    | Local email testing (`--profile tools`)          |
 
 ```bash
 docker compose up -d postgres pgbouncer redis minio storage-init coturn

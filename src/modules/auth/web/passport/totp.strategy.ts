@@ -26,10 +26,7 @@ class TotpStrategy extends PassportStrategy {
     try {
       const body = this.readBody(req.body);
       const code = typeof body.code === 'string' ? body.code : null;
-      const challengeToken =
-        typeof body.challengeToken === 'string'
-          ? body.challengeToken
-          : (req.session.mfaChallenge?.token ?? null);
+      const challengeToken = typeof body.challengeToken === 'string' ? body.challengeToken : null;
 
       if (!(code && challengeToken)) {
         throw new MfaChallengeExpiredException();
@@ -37,7 +34,6 @@ class TotpStrategy extends PassportStrategy {
 
       const user = await this.mfa.verifyChallenge(challengeToken, code);
 
-      req.session.mfaChallenge = null;
       this.success(user);
     } catch (error) {
       this.error(error instanceof Error ? error : new Error(String(error)));

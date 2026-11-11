@@ -9,6 +9,7 @@ import type { PasswordResetCodeRecord } from '@/modules/auth/logic/entities/pass
 import type { EmailSender } from '@/modules/auth/logic/ports/email.sender.js';
 import type { PasswordHasher } from '@/modules/auth/logic/ports/password.hasher.js';
 import type { PasswordResetRepository } from '@/modules/auth/logic/ports/password-reset.repository.js';
+import type { RefreshTokenRepository } from '@/modules/auth/logic/ports/refresh-token.repository.js';
 import type { UserRepository } from '@/modules/auth/logic/ports/user.repository.js';
 
 @injectable()
@@ -17,6 +18,8 @@ export class PasswordResetService {
     @inject(AUTH_TYPES.UserRepository) private readonly users: UserRepository,
     @inject(AUTH_TYPES.PasswordResetRepository)
     private readonly codes: PasswordResetRepository,
+    @inject(AUTH_TYPES.RefreshTokenRepository)
+    private readonly refreshTokens: RefreshTokenRepository,
     @inject(AUTH_TYPES.PasswordHasher) private readonly hasher: PasswordHasher,
     @inject(AUTH_TYPES.TokenGenerator) private readonly tokens: TokenGenerator,
     @inject(AUTH_TYPES.EmailSender) private readonly email: EmailSender,
@@ -103,6 +106,7 @@ export class PasswordResetService {
     const passwordHash = await this.hasher.hash(newPassword);
 
     await this.users.updatePassword(code.userId, passwordHash);
+    await this.refreshTokens.revokeAllForUser(code.userId, 'password_reset', new Date());
     await this.codes.markTokenUsed(code.id);
   }
 

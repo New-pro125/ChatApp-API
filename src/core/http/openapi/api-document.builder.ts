@@ -7,7 +7,6 @@ import {
   type ZodOpenApiPathsObject,
   type ZodOpenApiResponsesObject,
 } from 'zod-openapi';
-import type { AppConfig } from '@/core/config/app.config.js';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import type { OpenApiRegistry } from '@/core/http/openapi/openapi.registry.js';
 import type { RegisteredOperation } from '@/core/http/openapi/openapi.types.js';
@@ -24,10 +23,7 @@ export type OpenApiDocument = ReturnType<typeof createDocument>;
 export class ApiDocumentBuilder {
   private cached: OpenApiDocument | null = null;
 
-  constructor(
-    @inject(CORE_TYPES.OpenApiRegistry) private readonly registry: OpenApiRegistry,
-    @inject(CORE_TYPES.Config) private readonly config: AppConfig,
-  ) {}
+  constructor(@inject(CORE_TYPES.OpenApiRegistry) private readonly registry: OpenApiRegistry) {}
 
   document(): OpenApiDocument {
     this.cached ??= this.create();
@@ -66,11 +62,11 @@ export class ApiDocumentBuilder {
       ],
       components: {
         securitySchemes: {
-          sessionCookie: {
-            type: 'apiKey',
-            in: 'cookie',
-            name: this.config.sessionCookieName,
-            description: 'Server-side session cookie issued on login or registration.',
+          bearerAuth: {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT',
+            description: 'Short-lived EdDSA access token issued by the auth module.',
           },
         },
       },

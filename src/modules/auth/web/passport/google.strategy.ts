@@ -10,6 +10,7 @@ import type {
   PassportProvider,
   PassportStatic,
 } from '@/modules/auth/web/passport/passport.provider.js';
+import type { PassportOAuthStateStore } from '@/modules/auth/web/passport/passport-oauth-state.store.js';
 
 @injectable()
 export class GooglePassportProvider implements PassportProvider {
@@ -21,6 +22,8 @@ export class GooglePassportProvider implements PassportProvider {
     @inject(CORE_TYPES.Config) private readonly config: AppConfig,
     @inject(AUTH_TYPES.OAuthLoginService)
     private readonly oauth: OAuthLoginService,
+    @inject(AUTH_TYPES.PassportOAuthStateStore)
+    private readonly stateStore: PassportOAuthStateStore,
   ) {}
 
   register(passport: PassportStatic): void {
@@ -32,6 +35,7 @@ export class GooglePassportProvider implements PassportProvider {
           clientID: settings.clientId,
           clientSecret: settings.clientSecret,
           callbackURL: settings.callbackUrl,
+          store: this.stateStore.asStateStore(),
         },
         async (
           _accessToken: string,

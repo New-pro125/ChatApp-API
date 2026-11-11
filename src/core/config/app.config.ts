@@ -138,6 +138,53 @@ export class SsoConfig {
   }
 }
 
+export class TokenConfig {
+  /** Ed25519 private key seed; null means an ephemeral key is generated. */
+  readonly privateKeySeed: Buffer | null;
+  readonly issuer: string;
+  readonly audience: string;
+  readonly accessTokenTtlSeconds: number;
+  readonly refreshTokenTtlSeconds: number;
+  readonly oauthGrantTtlSeconds: number;
+  readonly oauthStateTtlSeconds: number;
+  readonly oauthStateCookieName: string;
+
+  constructor(
+    privateKeySeed: Buffer | null,
+    issuer: string,
+    audience: string,
+    accessTokenTtlSeconds: number,
+    refreshTokenTtlSeconds: number,
+    oauthGrantTtlSeconds: number,
+    oauthStateTtlSeconds: number,
+    oauthStateCookieName: string,
+    requireProductionKey: boolean,
+  ) {
+    if (requireProductionKey && privateKeySeed === null) {
+      throw new Error(
+        'ACCESS_TOKEN_PRIVATE_KEY is required in production: a base64url-encoded 32-byte Ed25519 seed',
+      );
+    }
+
+    if (privateKeySeed !== null && privateKeySeed.length !== 32) {
+      throw new Error('ACCESS_TOKEN_PRIVATE_KEY must decode to exactly 32 bytes');
+    }
+
+    if (accessTokenTtlSeconds <= 0 || refreshTokenTtlSeconds <= accessTokenTtlSeconds) {
+      throw new Error('Token TTLs must be positive and the refresh TTL must exceed the access TTL');
+    }
+
+    this.privateKeySeed = privateKeySeed;
+    this.issuer = issuer;
+    this.audience = audience;
+    this.accessTokenTtlSeconds = accessTokenTtlSeconds;
+    this.refreshTokenTtlSeconds = refreshTokenTtlSeconds;
+    this.oauthGrantTtlSeconds = oauthGrantTtlSeconds;
+    this.oauthStateTtlSeconds = oauthStateTtlSeconds;
+    this.oauthStateCookieName = oauthStateCookieName;
+  }
+}
+
 export class HttpConfig {
   constructor(
     readonly bodyLimitBytes: number,
@@ -181,9 +228,7 @@ export class AppConfig {
   readonly databaseConnectionTimeoutMs: number;
   readonly redisUrl: string;
 
-  readonly sessionSecret: string;
-  readonly sessionCookieName: string;
-  readonly sessionTtlSeconds: number;
+  readonly tokens: TokenConfig;
 
   readonly logLevel: LogLevel;
 
@@ -232,14 +277,19 @@ export class AppConfig {
     this.databaseConnectionTimeoutMs = env.readNumber('DB_CONNECTION_TIMEOUT_MS', 5000);
     this.redisUrl = env.readRequired('REDIS_URL');
 
-    this.sessionSecret = env.readRequired('SESSION_SECRET');
+    const accessTokenPrivateKey = env.readOptional('ACCESS_TOKEN_PRIVATE_KEY');
 
-    if (this.sessionSecret.length < 32) {
-      throw new Error('SESSION_SECRET must be at least 32 characters long');
-    }
-
-    this.sessionCookieName = env.readString('SESSION_COOKIE_NAME', 'inversify.sid');
-    this.sessionTtlSeconds = env.readNumber('SESSION_TTL_SECONDS', 604800);
+    this.tokens = new TokenConfig(
+      accessTokenPrivateKey === undefined ? null : Buffer.from(accessTokenPrivateKey, 'base64url'),
+      env.readString('ACCESS_TOKEN_ISSUER', 'inversify-messenger'),
+      env.readString('ACCESS_TOKEN_AUDIENCE', 'inversify-messenger'),
+      env.readNumber('ACCESS_TOKEN_TTL_SECONDS', 900),
+      env.readNumber('REFRESH_TOKEN_TTL_SECONDS', 2_592_000),
+      env.readNumber('OAUTH_GRANT_TTL_SECONDS', 60),
+      env.readNumber('OAUTH_STATE_TTL_SECONDS', 600),
+      env.readString('OAUTH_STATE_COOKIE_NAME', 'inversify.oauth'),
+      this.nodeEnv === 'production',
+    );
 
     this.logLevel = env.readEnum('LOG_LEVEL', LOG_LEVELS, 'info');
 
