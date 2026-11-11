@@ -24,6 +24,7 @@ export class Application {
   private readonly app: Express;
   private readonly modules: AppModule[];
   private readonly server: HttpServer;
+  private initialized: boolean = false;
   private started: boolean = false;
 
   constructor(private readonly container: AppContainer) {
@@ -100,8 +101,20 @@ export class Application {
     this.server = new HttpServer(this.app, config, logger);
   }
 
-  async start(): Promise<void> {
-    if (this.started) {
+  get expressApp(): Express {
+    return this.app;
+  }
+
+  get rootContainer(): AppContainer {
+    return this.container;
+  }
+
+  getModule<T extends AppModule>(name: string): T | undefined {
+    return this.modules.find((module) => module.name === name) as T | undefined;
+  }
+
+  async initialize(): Promise<void> {
+    if (this.initialized) {
       return;
     }
 
@@ -111,6 +124,15 @@ export class Application {
       await module.configure();
     }
 
+    this.initialized = true;
+  }
+
+  async start(): Promise<void> {
+    if (this.started) {
+      return;
+    }
+
+    await this.initialize();
     await this.server.listen();
 
     const { config, logger } = this.container;
@@ -120,18 +142,19 @@ export class Application {
   }
 
   async stop(): Promise<void> {
-    if (!this.started) {
-      return;
+    if (this.started) {
+      this.started = false;
+      await this.server.close();
     }
 
-    this.started = false;
+    if (this.initialized) {
+      this.initialized = false;
 
-    await this.server.close();
+      for (const module of this.modules) {
+        await module.dispose();
+      }
 
-    for (const module of this.modules) {
-      await module.dispose();
+      await this.container.dispose();
     }
-
-    await this.container.dispose();
   }
 }

@@ -360,11 +360,13 @@ OAuth, SSO, and Docker Compose options.
 npm run dev        # tsx watch
 npm run clean      # remove dist
 npm run typecheck  # tsc --noEmit
+npm test           # run Vitest integration tests
+npm run test:watch # vitest watch mode
 npm run build      # clean + tsc + tsc-alias (no source maps)
 npm run start      # node dist/index.js
 npm run lint       # biome check
 npm run check      # biome check --write
-npm run verify     # typecheck + lint + build
+npm run verify     # typecheck + lint + build + test
 npm run db:generate  # generate SQL from the Drizzle schema
 npm run db:migrate   # apply pending Drizzle migrations
 npm run db:check     # detect schema drift

@@ -108,7 +108,7 @@
       }
     },
     {
-      "includes": ["scripts/**", "drizzle.config.ts"],
+      "includes": ["scripts/**", "drizzle.config.ts", "vitest.config.ts", "tests/**"],
       "linter": {
         "rules": {
           "style": {

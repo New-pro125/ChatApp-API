@@ -15,8 +15,7 @@ before making changes, then read `README.md` for the public API and setup guide.
 - Zod request validation with generated OpenAPI 3.1 and the Scalar UI
 - Pino and pino-http logging, prom-client metrics, Biome linting/formatting
 - BullMQ, S3-compatible media storage, coturn for WebRTC calls
-- No test suite yet. Vitest and Supertest are installed; verify with typecheck,
-  lint, build, and targeted manual smoke tests.
+- Integration test suite with Vitest and Supertest; verify with `npm test` or `npm run verify`.
 
 ## Commands
 
@@ -26,10 +25,13 @@ docker compose up -d postgres redis minio storage-init
 npm run db:migrate
 npm run dev
 
-npm run typecheck   # tsc --noEmit
+npm test            # run Vitest integration tests
+npm run test:watch  # run Vitest in watch mode
+npm run typecheck   # tsc --noEmit (app + tests)
 npm run lint        # biome check
 npm run check       # biome check --write
 npm run build       # tsc + tsc-alias
+npm run verify      # typecheck + lint + build + test
 npm run start       # run dist/index.js
 
 npm run db:generate # generate SQL from the Drizzle schema
@@ -288,7 +290,7 @@ Drizzle ORM is the only application data-access layer.
 
 Before reporting completion:
 
-1. Run `npm run typecheck`, `npm run lint`, and `npm run build`.
+1. Run `npm run verify` (typecheck, lint, build, test).
 2. For HTTP, auth, error, or database changes, run the app and smoke-test the
    affected endpoints, including at least one success and one error path.
 3. Verify lockout headers and reset-token behavior if auth was touched.

@@ -20,6 +20,10 @@ export class AuthModule implements AppModule {
     this.router = this.container.get<AuthRouter>(AUTH_TYPES.AuthRouter).router;
   }
 
+  get authContainer(): AuthContainer {
+    return this.container;
+  }
+
   async configure(): Promise<void> {
     this.container.get<AuthRateLimiter>(AUTH_TYPES.AuthRateLimiter).initialize();
 
