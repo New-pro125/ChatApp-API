@@ -8,6 +8,7 @@ import { UnauthorizedException } from '@/core/errors/http.error.js';
 import type { ApiResponse } from '@/core/http/response/api-response.js';
 import { AUTH_TYPES } from '@/modules/auth/auth.types.js';
 import type { AuthService } from '@/modules/auth/logic/auth.service.js';
+import type { CaptchaService } from '@/modules/auth/logic/captcha.service.js';
 import type { EmailVerificationService } from '@/modules/auth/logic/email-verification.service.js';
 import type { AuthenticatedUser } from '@/modules/auth/logic/entities/authenticated-user.js';
 import type { DeviceContext } from '@/modules/auth/logic/entities/refresh-token-record.js';
@@ -29,6 +30,7 @@ export class AuthController {
     @inject(AUTH_TYPES.TokenService) private readonly tokens: TokenService,
     @inject(AUTH_TYPES.EmailVerificationService)
     private readonly emailVerification: EmailVerificationService,
+    @inject(AUTH_TYPES.CaptchaService) private readonly captcha: CaptchaService,
     @inject(CORE_TYPES.Passport) private readonly passport: PassportStatic,
     @inject(CORE_TYPES.ApiResponse) private readonly response: ApiResponse,
     @inject(CORE_TYPES.Logger) private readonly logger: Logger,
@@ -36,6 +38,9 @@ export class AuthController {
 
   register: RequestHandler = async (req, res) => {
     const input = registerSchema.parse(req.body);
+
+    await this.captcha.assertValid(input.captchaToken, req.ip ?? null);
+
     const user = await this.auth.register(input);
     const tokens = await this.tokens.issue(user, this.deviceContext(req, input));
 
@@ -44,8 +49,11 @@ export class AuthController {
     this.response.created(res, { user, tokens });
   };
 
-  login: RequestHandler = (req, res, next) => {
+  login: RequestHandler = async (req, res, next) => {
     const input = loginSchema.parse(req.body);
+
+    await this.captcha.assertValid(input.captchaToken, req.ip ?? null);
+
     req.body = input;
 
     this.passport.authenticate(

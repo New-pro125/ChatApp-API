@@ -188,6 +188,11 @@ Do not regress these behaviors:
   uploads are gated by `RequireVerifiedEmailMiddleware` (`403
   EMAIL_NOT_VERIFIED`). Resolve it as `CORE_TYPES.RequireVerifiedEmail`; do not
   inspect `emailVerifiedAt` ad hoc in feature modules.
+- Registration and login run `CaptchaService.assertValid()` before credentials,
+  lockout accounting, or account creation. A missing token returns
+  `400 CAPTCHA_REQUIRED`, a rejected token `400 CAPTCHA_INVALID`, and a provider
+  outage `503 CAPTCHA_UNAVAILABLE`. Failed captchas must never increment
+  `failed_login_attempts` or reveal whether an email exists.
 - OAuth/OIDC accounts require a verified provider email and are linked to an
   existing user by verified email when possible.
 - Password authentication alone never issues tokens when MFA is enabled; it

@@ -10,11 +10,13 @@ export const AUTH_TYPES = {
   PasswordHasher: Symbol.for('Auth.PasswordHasher'),
   MfaSecretCipher: Symbol.for('Auth.MfaSecretCipher'),
   EmailSender: Symbol.for('Auth.EmailSender'),
+  CaptchaVerifier: Symbol.for('Auth.CaptchaVerifier'),
 
   AuthService: Symbol.for('Auth.AuthService'),
   AccountLockoutService: Symbol.for('Auth.AccountLockoutService'),
   PasswordResetService: Symbol.for('Auth.PasswordResetService'),
   EmailVerificationService: Symbol.for('Auth.EmailVerificationService'),
+  CaptchaService: Symbol.for('Auth.CaptchaService'),
   OAuthLoginService: Symbol.for('Auth.OAuthLoginService'),
   MfaService: Symbol.for('Auth.MfaService'),
   TotpService: Symbol.for('Auth.TotpService'),

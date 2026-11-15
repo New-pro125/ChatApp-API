@@ -1,8 +1,10 @@
+import type { Container } from 'inversify';
 import type { AuthModule } from '@/modules/auth/auth.module.js';
 import { AUTH_TYPES } from '@/modules/auth/auth.types.js';
 import { AuthenticatedUser } from '@/modules/auth/logic/entities/authenticated-user.js';
 import type { DeviceContext } from '@/modules/auth/logic/entities/refresh-token-record.js';
 import type { UserRecord } from '@/modules/auth/logic/entities/user-record.js';
+import type { CaptchaVerifier } from '@/modules/auth/logic/ports/captcha.verifier.js';
 import type { EmailSender } from '@/modules/auth/logic/ports/email.sender.js';
 import type { PasswordHasher } from '@/modules/auth/logic/ports/password.hasher.js';
 import type { UserRepository } from '@/modules/auth/logic/ports/user.repository.js';
@@ -20,6 +22,7 @@ export interface TestUserRegistration {
 export class AuthFixture {
   readonly emails = new CapturingEmailSender();
 
+  private readonly container: Container;
   private readonly tokenService: TokenService;
   private readonly userRepository: UserRepository;
   private readonly passwordHasher: PasswordHasher;
@@ -31,15 +34,24 @@ export class AuthFixture {
       throw new Error('AuthModule is not registered in the application');
     }
 
-    const container = authModule.authContainer;
+    this.container = authModule.authContainer;
 
     // Replace the configured sender before any email-using service is resolved
     // so tests can read the codes that would have been mailed.
-    container.rebind<EmailSender>(AUTH_TYPES.EmailSender).toConstantValue(this.emails);
+    this.container.rebind<EmailSender>(AUTH_TYPES.EmailSender).toConstantValue(this.emails);
 
-    this.tokenService = container.get<TokenService>(AUTH_TYPES.TokenService);
-    this.userRepository = container.get<UserRepository>(AUTH_TYPES.UserRepository);
-    this.passwordHasher = container.get<PasswordHasher>(AUTH_TYPES.PasswordHasher);
+    this.tokenService = this.container.get<TokenService>(AUTH_TYPES.TokenService);
+    this.userRepository = this.container.get<UserRepository>(AUTH_TYPES.UserRepository);
+    this.passwordHasher = this.container.get<PasswordHasher>(AUTH_TYPES.PasswordHasher);
+  }
+
+  /**
+   * Replaces the captcha verifier before the first request resolves
+   * `CaptchaService`, letting tests exercise the enabled flow without calling
+   * Cloudflare.
+   */
+  useCaptchaVerifier(verifier: CaptchaVerifier): void {
+    this.container.rebind<CaptchaVerifier>(AUTH_TYPES.CaptchaVerifier).toConstantValue(verifier);
   }
 
   async register(params: TestUserRegistration = {}) {

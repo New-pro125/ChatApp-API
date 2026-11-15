@@ -86,6 +86,25 @@ export class EmailVerificationConfig {
   ) {}
 }
 
+export class CaptchaConfig {
+  constructor(
+    readonly enabled: boolean,
+    readonly secret: string | null,
+    readonly verifyUrl: string,
+    readonly timeoutMs: number,
+    readonly expectedHostname: string | null,
+    readonly expectedAction: string | null,
+  ) {
+    if (this.enabled && !this.secret) {
+      throw new Error('CAPTCHA_SECRET is required when CAPTCHA_ENABLED=true');
+    }
+
+    if (!Number.isInteger(this.timeoutMs) || this.timeoutMs <= 0) {
+      throw new Error('CAPTCHA_TIMEOUT_MS must be a positive integer');
+    }
+  }
+}
+
 export class MfaConfig {
   constructor(
     readonly enabled: boolean,
@@ -243,6 +262,7 @@ export class AppConfig {
   readonly lockout: LockoutConfig;
   readonly otp: OtpConfig;
   readonly verification: EmailVerificationConfig;
+  readonly captcha: CaptchaConfig;
   readonly mfa: MfaConfig;
   readonly smtp: SmtpConfig;
 
@@ -319,6 +339,18 @@ export class AppConfig {
       env.readNumber('EMAIL_VERIFICATION_TTL_SECONDS', 86_400),
       env.readNumber('EMAIL_VERIFICATION_MAX_ATTEMPTS', 5),
       env.readNumber('EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS', 60),
+    );
+
+    this.captcha = new CaptchaConfig(
+      env.readBoolean('CAPTCHA_ENABLED', false),
+      env.readOptional('CAPTCHA_SECRET') ?? null,
+      env.readString(
+        'CAPTCHA_VERIFY_URL',
+        'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+      ),
+      env.readNumber('CAPTCHA_TIMEOUT_MS', 5_000),
+      env.readOptional('CAPTCHA_EXPECTED_HOSTNAME') ?? null,
+      env.readOptional('CAPTCHA_EXPECTED_ACTION') ?? null,
     );
 
     const mfaEncryptionKey = env.readOptional('MFA_ENCRYPTION_KEY');

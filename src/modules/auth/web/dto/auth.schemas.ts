@@ -5,16 +5,26 @@ const deviceContext = {
   deviceType: z.enum(['web', 'ios', 'android', 'desktop']).optional(),
 };
 
+const captchaToken = z
+  .string()
+  .trim()
+  .min(1)
+  .max(4096)
+  .optional()
+  .describe('Cloudflare Turnstile token; required when CAPTCHA_ENABLED=true');
+
 export const registerSchema = z.object({
   email: z.email().max(254),
   displayName: z.string().trim().min(1).max(100),
   password: z.string().min(12).max(128),
+  captchaToken,
   ...deviceContext,
 });
 
 export const loginSchema = z.object({
   email: z.email().max(254),
   password: z.string().min(1).max(128),
+  captchaToken,
   ...deviceContext,
 });
 

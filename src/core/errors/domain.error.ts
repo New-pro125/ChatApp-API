@@ -63,6 +63,33 @@ export class EmailAlreadyVerifiedException extends DomainException {
   }
 }
 
+export class CaptchaRequiredException extends DomainException {
+  readonly code = ErrorCode.CAPTCHA_REQUIRED;
+
+  constructor(message = 'Captcha verification is required', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}
+
+export class CaptchaInvalidException extends DomainException {
+  readonly code = ErrorCode.CAPTCHA_INVALID;
+
+  constructor(message = 'Captcha verification failed', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}
+
+export class CaptchaUnavailableException extends DomainException {
+  readonly code = ErrorCode.CAPTCHA_UNAVAILABLE;
+
+  constructor(
+    message = 'Captcha verification is temporarily unavailable',
+    options?: AppErrorOptions,
+  ) {
+    super(message, options);
+  }
+}
+
 export class ResendCooldownException extends DomainException {
   readonly code = ErrorCode.RATE_LIMITED;
   readonly retryAfterSeconds: number;

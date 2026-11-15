@@ -349,6 +349,24 @@ After `AUTH_MAX_FAILED_ATTEMPTS` failures inside `AUTH_LOCKOUT_WINDOW_SECONDS`,
 the account is locked for `AUTH_LOCKOUT_SECONDS`. Locked logins return HTTP
 `423` with an `ACCOUNT_LOCKED` error code and a `Retry-After` header.
 
+## Captcha
+
+Registration and login accept an optional `captchaToken` (a Cloudflare Turnstile
+token) in the JSON body. When `CAPTCHA_ENABLED=true`, the token is mandatory and
+verified through `CAPTCHA_VERIFY_URL` before any credential, lockout, or
+account-creation work happens, so failed captchas never consume password hashing
+or increment `failed_login_attempts` and never reveal whether an email exists.
+
+- `400 CAPTCHA_REQUIRED` — the token is missing while captcha is enabled.
+- `400 CAPTCHA_INVALID` — the provider rejected the token, hostname, or action.
+- `503 CAPTCHA_UNAVAILABLE` — the provider timed out, returned a non-2xx status,
+  or answered with malformed JSON. The request fails closed.
+
+`CAPTCHA_SECRET` is required when the feature is enabled;
+`CAPTCHA_EXPECTED_HOSTNAME` and `CAPTCHA_EXPECTED_ACTION` optionally pin tokens
+to a specific site hostname and widget action. Local development and tests keep
+captcha disabled, so no provider credentials are needed.
+
 ## Configuration
 
 Loaded with `dotenv/config`; values are typed through `src/types/env.d.ts`.
@@ -374,7 +392,7 @@ and `METRICS_TOKEN` control the Prometheus endpoint. The `HTTP_*`, `TRUST_PROXY`
 `APP_ORIGINS`, and `HEALTH_CACHE_TTL_MS` variables tune server timeouts, proxy
 trust, the CORS allowlist, and readiness caching. See `.env.example` for the
 full list of database pool, HTTP hardening, auth hardening, OTP, email
-verification, MFA, SMTP, OAuth, SSO, and Docker Compose options.
+verification, captcha, MFA, SMTP, OAuth, SSO, and Docker Compose options.
 
 ## Scripts
 

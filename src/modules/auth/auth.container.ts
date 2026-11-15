@@ -9,6 +9,7 @@ import { RequestScopeMiddleware } from '@/core/http/middleware/request-scope.js'
 import { AUTH_TYPES } from '@/modules/auth/auth.types.js';
 import { AesMfaSecretCipher } from '@/modules/auth/data/aes-mfa-secret.cipher.js';
 import { Argon2PasswordHasher } from '@/modules/auth/data/argon2-password.hasher.js';
+import { DisabledCaptchaVerifier } from '@/modules/auth/data/disabled-captcha.verifier.js';
 import { LogEmailSender } from '@/modules/auth/data/email/log-email.sender.js';
 import { SmtpEmailSender } from '@/modules/auth/data/email/smtp-email.sender.js';
 import { PostgresEmailVerificationRepository } from '@/modules/auth/data/postgres-email-verification.repository.js';
@@ -20,13 +21,16 @@ import { PostgresUserRepository } from '@/modules/auth/data/postgres-user.reposi
 import { RedisOAuthGrantStore } from '@/modules/auth/data/redis-oauth-grant.store.js';
 import { RedisOAuthStateStore } from '@/modules/auth/data/redis-oauth-state.store.js';
 import { TokenGenerator } from '@/modules/auth/data/token.generator.js';
+import { TurnstileCaptchaVerifier } from '@/modules/auth/data/turnstile-captcha.verifier.js';
 import { AccountLockoutService } from '@/modules/auth/logic/account-lockout.service.js';
 import { AuthService } from '@/modules/auth/logic/auth.service.js';
 import { AuthPrincipalStore } from '@/modules/auth/logic/auth-principal.store.js';
+import { CaptchaService } from '@/modules/auth/logic/captcha.service.js';
 import { EmailVerificationService } from '@/modules/auth/logic/email-verification.service.js';
 import { MfaService } from '@/modules/auth/logic/mfa.service.js';
 import { OAuthLoginService } from '@/modules/auth/logic/oauth-login.service.js';
 import { PasswordResetService } from '@/modules/auth/logic/password-reset.service.js';
+import type { CaptchaVerifier } from '@/modules/auth/logic/ports/captcha.verifier.js';
 import type { EmailSender } from '@/modules/auth/logic/ports/email.sender.js';
 import type { EmailVerificationRepository } from '@/modules/auth/logic/ports/email-verification.repository.js';
 import type { MfaRepository } from '@/modules/auth/logic/ports/mfa.repository.js';
@@ -100,6 +104,16 @@ export class AuthContainer extends Container {
       .inSingletonScope();
     this.bind<TokenGenerator>(AUTH_TYPES.TokenGenerator).to(TokenGenerator).inSingletonScope();
 
+    if (config.captcha.enabled) {
+      this.bind<CaptchaVerifier>(AUTH_TYPES.CaptchaVerifier)
+        .to(TurnstileCaptchaVerifier)
+        .inSingletonScope();
+    } else {
+      this.bind<CaptchaVerifier>(AUTH_TYPES.CaptchaVerifier)
+        .to(DisabledCaptchaVerifier)
+        .inSingletonScope();
+    }
+
     if (config.smtp.enabled) {
       this.bind<EmailSender>(AUTH_TYPES.EmailSender).to(SmtpEmailSender).inSingletonScope();
     } else {
@@ -116,6 +130,7 @@ export class AuthContainer extends Container {
     this.bind<EmailVerificationService>(AUTH_TYPES.EmailVerificationService)
       .to(EmailVerificationService)
       .inSingletonScope();
+    this.bind<CaptchaService>(AUTH_TYPES.CaptchaService).to(CaptchaService).inSingletonScope();
     this.bind<OAuthLoginService>(AUTH_TYPES.OAuthLoginService)
       .to(OAuthLoginService)
       .inSingletonScope();

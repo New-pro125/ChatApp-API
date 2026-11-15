@@ -123,6 +123,11 @@ const conflict = {
   schema: apiErrorResponseSchema,
 };
 
+const serviceUnavailable = {
+  description: 'A required upstream service is temporarily unavailable',
+  schema: apiErrorResponseSchema,
+};
+
 /**
  * OpenAPI contracts for the authentication module.
  *
@@ -140,6 +145,7 @@ export const authContracts = {
       201: { description: 'Account created', schema: authenticationResponse },
       ...commonErrorResponses,
       409: conflict,
+      503: serviceUnavailable,
     },
   },
   login: {
@@ -147,12 +153,13 @@ export const authContracts = {
     tags: ['Auth'],
     summary: 'Log in with email and password',
     description:
-      'Returns 202 with a single-use MFA challenge when the account has MFA enabled; no tokens are issued until the challenge is verified.',
+      'Verifies the captcha token before credentials. Returns 202 with a single-use MFA challenge when the account has MFA enabled; no tokens are issued until the challenge is verified.',
     request: { body: loginSchema },
     responses: {
       200: { description: 'Authenticated', schema: authenticationResponse },
       202: { description: 'MFA challenge required', schema: mfaChallengeResponse },
       ...commonErrorResponses,
+      503: serviceUnavailable,
     },
   },
   logout: {
