@@ -23,6 +23,8 @@ const STATUS_BY_DOMAIN_CODE: Partial<Record<ErrorCode, number>> = {
   [ErrorCode.NOT_FOUND]: 404,
   [ErrorCode.CONFLICT]: 409,
   [ErrorCode.ACCOUNT_LOCKED]: 423,
+  [ErrorCode.EMAIL_NOT_VERIFIED]: 403,
+  [ErrorCode.RATE_LIMITED]: 429,
   [ErrorCode.OTP_EXPIRED]: 400,
   [ErrorCode.OTP_INVALID]: 400,
   [ErrorCode.MFA_REQUIRED]: 401,

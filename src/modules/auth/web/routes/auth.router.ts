@@ -9,6 +9,7 @@ import type { OpenApiRegistry } from '@/core/http/openapi/openapi.registry.js';
 import { AUTH_TYPES } from '@/modules/auth/auth.types.js';
 import type { AuthController } from '@/modules/auth/web/auth.controller.js';
 import { authContracts, tokenContracts } from '@/modules/auth/web/dto/auth.openapi.js';
+import type { EmailVerificationController } from '@/modules/auth/web/email-verification.controller.js';
 import type { MfaController } from '@/modules/auth/web/mfa.controller.js';
 import type { PasswordResetController } from '@/modules/auth/web/password-reset.controller.js';
 import type { OAuthRouter } from '@/modules/auth/web/routes/oauth.router.js';
@@ -88,6 +89,30 @@ export class AuthRouter {
     this.routes.get('/me', authContracts.me, this.requireAuth.handle, (req, res, next) => {
       return req.container.get<AuthController>(AUTH_TYPES.AuthController).me(req, res, next);
     });
+
+    this.routes.post(
+      '/email/resend',
+      authContracts.resendEmailVerification,
+      this.requireAuth.handle,
+      this.limiter.handle,
+      (req, res, next) => {
+        return req.container
+          .get<EmailVerificationController>(AUTH_TYPES.EmailVerificationController)
+          .resend(req, res, next);
+      },
+    );
+
+    this.routes.post(
+      '/email/verify',
+      authContracts.verifyEmail,
+      this.requireAuth.handle,
+      this.limiter.handle,
+      (req, res, next) => {
+        return req.container
+          .get<EmailVerificationController>(AUTH_TYPES.EmailVerificationController)
+          .verify(req, res, next);
+      },
+    );
 
     this.routes.get(
       '/sessions',

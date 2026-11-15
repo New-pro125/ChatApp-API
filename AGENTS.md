@@ -176,6 +176,18 @@ Do not regress these behaviors:
 - A successful password reset increments `users.session_version` and revokes
   every refresh token for the account, invalidating all existing sessions.
 - Reused or expired reset tokens are rejected.
+- Registration sends an initial email-verification code, but registration
+  never fails when the email cannot be delivered.
+- Email-verification codes are Argon2-hashed, expire after
+  `EMAIL_VERIFICATION_TTL_SECONDS`, are limited to
+  `EMAIL_VERIFICATION_MAX_ATTEMPTS`, and are single-use. Requesting a new code
+  invalidates older active codes and is rejected with `429 RATE_LIMITED` (and
+  `Retry-After`) inside the resend cooldown. Resending for an already verified
+  address returns `409 CONFLICT`.
+- Unverified users may log in and manage their account, but messaging and
+  uploads are gated by `RequireVerifiedEmailMiddleware` (`403
+  EMAIL_NOT_VERIFIED`). Resolve it as `CORE_TYPES.RequireVerifiedEmail`; do not
+  inspect `emailVerifiedAt` ad hoc in feature modules.
 - OAuth/OIDC accounts require a verified provider email and are linked to an
   existing user by verified email when possible.
 - Password authentication alone never issues tokens when MFA is enabled; it

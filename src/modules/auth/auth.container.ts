@@ -1,6 +1,7 @@
 import { Container } from 'inversify';
 import type { PrincipalStore } from '@/core/auth/principal.store.js';
 import { RequireBearerAuthMiddleware } from '@/core/auth/require-bearer-auth.middleware.js';
+import { RequireVerifiedEmailMiddleware } from '@/core/auth/require-verified-email.middleware.js';
 import type { AppConfig } from '@/core/config/app.config.js';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import { AuthRateLimiter } from '@/core/http/middleware/rate-limit.js';
@@ -10,6 +11,7 @@ import { AesMfaSecretCipher } from '@/modules/auth/data/aes-mfa-secret.cipher.js
 import { Argon2PasswordHasher } from '@/modules/auth/data/argon2-password.hasher.js';
 import { LogEmailSender } from '@/modules/auth/data/email/log-email.sender.js';
 import { SmtpEmailSender } from '@/modules/auth/data/email/smtp-email.sender.js';
+import { PostgresEmailVerificationRepository } from '@/modules/auth/data/postgres-email-verification.repository.js';
 import { PostgresMfaRepository } from '@/modules/auth/data/postgres-mfa.repository.js';
 import { PostgresOAuthAccountRepository } from '@/modules/auth/data/postgres-oauth-account.repository.js';
 import { PostgresPasswordResetRepository } from '@/modules/auth/data/postgres-password-reset.repository.js';
@@ -21,10 +23,12 @@ import { TokenGenerator } from '@/modules/auth/data/token.generator.js';
 import { AccountLockoutService } from '@/modules/auth/logic/account-lockout.service.js';
 import { AuthService } from '@/modules/auth/logic/auth.service.js';
 import { AuthPrincipalStore } from '@/modules/auth/logic/auth-principal.store.js';
+import { EmailVerificationService } from '@/modules/auth/logic/email-verification.service.js';
 import { MfaService } from '@/modules/auth/logic/mfa.service.js';
 import { OAuthLoginService } from '@/modules/auth/logic/oauth-login.service.js';
 import { PasswordResetService } from '@/modules/auth/logic/password-reset.service.js';
 import type { EmailSender } from '@/modules/auth/logic/ports/email.sender.js';
+import type { EmailVerificationRepository } from '@/modules/auth/logic/ports/email-verification.repository.js';
 import type { MfaRepository } from '@/modules/auth/logic/ports/mfa.repository.js';
 import type { MfaSecretCipher } from '@/modules/auth/logic/ports/mfa-secret.cipher.js';
 import type { OAuthAccountRepository } from '@/modules/auth/logic/ports/oauth-account.repository.js';
@@ -37,6 +41,7 @@ import type { UserRepository } from '@/modules/auth/logic/ports/user.repository.
 import { TokenService } from '@/modules/auth/logic/token.service.js';
 import { TotpService } from '@/modules/auth/logic/totp.service.js';
 import { AuthController } from '@/modules/auth/web/auth.controller.js';
+import { EmailVerificationController } from '@/modules/auth/web/email-verification.controller.js';
 import { MfaController } from '@/modules/auth/web/mfa.controller.js';
 import { OAuthController } from '@/modules/auth/web/oauth.controller.js';
 import { GitHubPassportProvider } from '@/modules/auth/web/passport/github.strategy.js';
@@ -74,6 +79,9 @@ export class AuthContainer extends Container {
     this.bind<PasswordResetRepository>(AUTH_TYPES.PasswordResetRepository)
       .to(PostgresPasswordResetRepository)
       .inSingletonScope();
+    this.bind<EmailVerificationRepository>(AUTH_TYPES.EmailVerificationRepository)
+      .to(PostgresEmailVerificationRepository)
+      .inSingletonScope();
     this.bind<MfaRepository>(AUTH_TYPES.MfaRepository).to(PostgresMfaRepository).inSingletonScope();
     this.bind<RefreshTokenRepository>(AUTH_TYPES.RefreshTokenRepository)
       .to(PostgresRefreshTokenRepository)
@@ -104,6 +112,9 @@ export class AuthContainer extends Container {
     this.bind<AuthService>(AUTH_TYPES.AuthService).to(AuthService).inSingletonScope();
     this.bind<PasswordResetService>(AUTH_TYPES.PasswordResetService)
       .to(PasswordResetService)
+      .inSingletonScope();
+    this.bind<EmailVerificationService>(AUTH_TYPES.EmailVerificationService)
+      .to(EmailVerificationService)
       .inSingletonScope();
     this.bind<OAuthLoginService>(AUTH_TYPES.OAuthLoginService)
       .to(OAuthLoginService)
@@ -158,6 +169,9 @@ export class AuthContainer extends Container {
     this.bind<PasswordResetController>(AUTH_TYPES.PasswordResetController).to(
       PasswordResetController,
     );
+    this.bind<EmailVerificationController>(AUTH_TYPES.EmailVerificationController).to(
+      EmailVerificationController,
+    );
     this.bind<MfaController>(AUTH_TYPES.MfaController).to(MfaController);
     this.bind<OAuthController>(AUTH_TYPES.OAuthController).to(OAuthController);
 
@@ -184,5 +198,8 @@ export class AuthContainer extends Container {
 
     this.root.bind<PrincipalStore>(CORE_TYPES.PrincipalStore).toConstantValue(principalStore);
     this.root.bind<RequireBearerAuthMiddleware>(CORE_TYPES.RequireAuth).toConstantValue(middleware);
+    this.root
+      .bind<RequireVerifiedEmailMiddleware>(CORE_TYPES.RequireVerifiedEmail)
+      .toConstantValue(new RequireVerifiedEmailMiddleware());
   }
 }

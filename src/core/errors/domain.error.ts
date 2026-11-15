@@ -44,6 +44,38 @@ export class EmailAlreadyRegisteredException extends DomainException {
   }
 }
 
+export class EmailNotVerifiedException extends DomainException {
+  readonly code = ErrorCode.EMAIL_NOT_VERIFIED;
+
+  constructor(
+    message = 'Email verification is required to perform this action',
+    options?: AppErrorOptions,
+  ) {
+    super(message, options);
+  }
+}
+
+export class EmailAlreadyVerifiedException extends DomainException {
+  readonly code = ErrorCode.CONFLICT;
+
+  constructor(message = 'Email address is already verified', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}
+
+export class ResendCooldownException extends DomainException {
+  readonly code = ErrorCode.RATE_LIMITED;
+  readonly retryAfterSeconds: number;
+
+  constructor(retryAfterSeconds: number, options?: AppErrorOptions) {
+    super(`Please wait ${retryAfterSeconds} seconds before requesting another verification code`, {
+      ...options,
+      details: { retryAfterSeconds },
+    });
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
 export class AccountLockedException extends DomainException {
   readonly code = ErrorCode.ACCOUNT_LOCKED;
   readonly retryAfterSeconds: number;

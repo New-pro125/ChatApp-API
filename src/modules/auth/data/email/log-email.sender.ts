@@ -23,4 +23,17 @@ export class LogEmailSender implements EmailSender {
 
     return Promise.resolve();
   }
+
+  sendVerificationCode(email: string, code: string, expiresAt: Date): Promise<void> {
+    this.logger.warn(
+      {
+        email,
+        code: this.config.nodeEnv === 'production' ? '[redacted]' : code,
+        expiresAt: expiresAt.toISOString(),
+      },
+      'SMTP is not configured; email verification code was not emailed',
+    );
+
+    return Promise.resolve();
+  }
 }

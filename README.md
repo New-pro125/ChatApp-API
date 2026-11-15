@@ -152,6 +152,28 @@ Protected enrollment, status, disable, and recovery-code routes require a valid
 access token. Disabling MFA or regenerating recovery codes requires a
 current authenticator code.
 
+### Email verification
+
+| Method | Path                     | Description                           |
+| ------ | ------------------------ | ------------------------------------- |
+| `POST` | `/api/auth/email/resend` | Send a new verification code          |
+| `POST` | `/api/auth/email/verify` | Confirm the email with a 6-digit code |
+
+Registering an account sends an initial verification code automatically.
+Codes are generated with a cryptographically secure RNG, stored only as Argon2
+hashes, expire after `EMAIL_VERIFICATION_TTL_SECONDS`, and are limited to
+`EMAIL_VERIFICATION_MAX_ATTEMPTS` guesses. Requesting a new code invalidates
+any older active code, and requests inside
+`EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS` return `429 RATE_LIMITED` with a
+`Retry-After` header. Resending for an account that is already verified returns
+`409 CONFLICT`.
+
+Unverified users can still log in, review their sessions, change their password,
+and manage MFA, but messaging and upload routes are gated by
+`RequireVerifiedEmailMiddleware`, which returns `403 EMAIL_NOT_VERIFIED` until
+the address is confirmed. `GET /api/auth/me` exposes `emailVerifiedAt` so
+clients can display and prompt for verification.
+
 ### Password reset
 
 | Method | Path                            | Description                                   |
@@ -351,8 +373,8 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'
 and `METRICS_TOKEN` control the Prometheus endpoint. The `HTTP_*`, `TRUST_PROXY`,
 `APP_ORIGINS`, and `HEALTH_CACHE_TTL_MS` variables tune server timeouts, proxy
 trust, the CORS allowlist, and readiness caching. See `.env.example` for the
-full list of database pool, HTTP hardening, auth hardening, OTP, MFA, SMTP,
-OAuth, SSO, and Docker Compose options.
+full list of database pool, HTTP hardening, auth hardening, OTP, email
+verification, MFA, SMTP, OAuth, SSO, and Docker Compose options.
 
 ## Scripts
 

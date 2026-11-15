@@ -15,6 +15,13 @@
       "when": 1794312745935,
       "tag": "0001_sparkling_albert_cleary",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794385857876,
+      "tag": "0002_acoustic_umar",
+      "breakpoints": true
     }
   ]
 }

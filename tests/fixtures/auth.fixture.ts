@@ -3,18 +3,23 @@ import { AUTH_TYPES } from '@/modules/auth/auth.types.js';
 import { AuthenticatedUser } from '@/modules/auth/logic/entities/authenticated-user.js';
 import type { DeviceContext } from '@/modules/auth/logic/entities/refresh-token-record.js';
 import type { UserRecord } from '@/modules/auth/logic/entities/user-record.js';
+import type { EmailSender } from '@/modules/auth/logic/ports/email.sender.js';
 import type { PasswordHasher } from '@/modules/auth/logic/ports/password.hasher.js';
 import type { UserRepository } from '@/modules/auth/logic/ports/user.repository.js';
 import type { IssuedTokens, TokenService } from '@/modules/auth/logic/token.service.js';
 import type { TestApp } from '../helpers/test-app.js';
+import { CapturingEmailSender } from './capturing-email.sender.js';
 
 export interface TestUserRegistration {
   email?: string;
   displayName?: string;
   password?: string;
+  emailVerifiedAt?: Date | null;
 }
 
 export class AuthFixture {
+  readonly emails = new CapturingEmailSender();
+
   private readonly tokenService: TokenService;
   private readonly userRepository: UserRepository;
   private readonly passwordHasher: PasswordHasher;
@@ -27,6 +32,11 @@ export class AuthFixture {
     }
 
     const container = authModule.authContainer;
+
+    // Replace the configured sender before any email-using service is resolved
+    // so tests can read the codes that would have been mailed.
+    container.rebind<EmailSender>(AUTH_TYPES.EmailSender).toConstantValue(this.emails);
+
     this.tokenService = container.get<TokenService>(AUTH_TYPES.TokenService);
     this.userRepository = container.get<UserRepository>(AUTH_TYPES.UserRepository);
     this.passwordHasher = container.get<PasswordHasher>(AUTH_TYPES.PasswordHasher);
@@ -61,6 +71,7 @@ export class AuthFixture {
       email,
       displayName,
       passwordHash,
+      emailVerifiedAt: params.emailVerifiedAt ?? null,
     });
   }
 

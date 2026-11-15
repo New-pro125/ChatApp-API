@@ -34,6 +34,7 @@ export class TestApp {
   async clearDatabase(): Promise<void> {
     await this.pool.query(`
       TRUNCATE TABLE
+        email_verification_codes,
         mfa_challenges,
         mfa_recovery_codes,
         oauth_accounts,

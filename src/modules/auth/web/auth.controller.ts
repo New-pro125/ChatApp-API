@@ -1,12 +1,14 @@
 import type { Request, RequestHandler } from 'express';
 import { inject, injectable } from 'inversify';
 import type passport from 'passport';
+import type { Logger } from 'pino';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import { InvalidCredentialsException } from '@/core/errors/domain.error.js';
 import { UnauthorizedException } from '@/core/errors/http.error.js';
 import type { ApiResponse } from '@/core/http/response/api-response.js';
 import { AUTH_TYPES } from '@/modules/auth/auth.types.js';
 import type { AuthService } from '@/modules/auth/logic/auth.service.js';
+import type { EmailVerificationService } from '@/modules/auth/logic/email-verification.service.js';
 import type { AuthenticatedUser } from '@/modules/auth/logic/entities/authenticated-user.js';
 import type { DeviceContext } from '@/modules/auth/logic/entities/refresh-token-record.js';
 import type { TokenService } from '@/modules/auth/logic/token.service.js';
@@ -25,14 +27,19 @@ export class AuthController {
   constructor(
     @inject(AUTH_TYPES.AuthService) private readonly auth: AuthService,
     @inject(AUTH_TYPES.TokenService) private readonly tokens: TokenService,
+    @inject(AUTH_TYPES.EmailVerificationService)
+    private readonly emailVerification: EmailVerificationService,
     @inject(CORE_TYPES.Passport) private readonly passport: PassportStatic,
     @inject(CORE_TYPES.ApiResponse) private readonly response: ApiResponse,
+    @inject(CORE_TYPES.Logger) private readonly logger: Logger,
   ) {}
 
   register: RequestHandler = async (req, res) => {
     const input = registerSchema.parse(req.body);
     const user = await this.auth.register(input);
     const tokens = await this.tokens.issue(user, this.deviceContext(req, input));
+
+    await this.sendInitialVerification(user, req);
 
     this.response.created(res, { user, tokens });
   };
@@ -80,6 +87,21 @@ export class AuthController {
   me: RequestHandler = (req, res) => {
     this.response.ok(res, this.requireUser(req));
   };
+
+  /**
+   * Registration succeeds even when the verification email cannot be sent; the
+   * client can request another code from `POST /api/auth/email/resend`.
+   */
+  private async sendInitialVerification(user: AuthenticatedUser, req: Request): Promise<void> {
+    try {
+      await this.emailVerification.request(user, req.ip ?? null);
+    } catch (error) {
+      this.logger.error(
+        { err: error, userId: user.id },
+        'Failed to send initial email verification code',
+      );
+    }
+  }
 
   private readMfaChallenge(info: unknown): { challengeToken: string; expiresAt: Date } | null {
     if (typeof info !== 'object' || info === null) {

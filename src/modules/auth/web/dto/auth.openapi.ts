@@ -18,6 +18,7 @@ import {
   registerSchema,
   resetPasswordSchema,
   revokeSessionParamsSchema,
+  verifyEmailSchema,
   verifyMfaSchema,
   verifyOtpSchema,
 } from '@/modules/auth/web/dto/auth.schemas.js';
@@ -33,6 +34,7 @@ export const authenticatedUserSchema = z
     sessionVersion: z.number().int().min(1),
     mfaEnabled: z.boolean(),
     mfaEnrolledAt: z.iso.datetime().nullable(),
+    emailVerifiedAt: z.iso.datetime().nullable(),
   })
   .meta({ id: 'AuthenticatedUser' });
 
@@ -185,6 +187,32 @@ export const authContracts = {
     security: bearerSecurity,
     responses: {
       200: { description: 'Authenticated user', schema: userResponse },
+      ...commonErrorResponses,
+    },
+  },
+  resendEmailVerification: {
+    operationId: 'auth.email.resend',
+    tags: ['Email verification'],
+    summary: 'Send a new email verification code',
+    description:
+      'Issues a fresh single-use code after the resend cooldown has elapsed and invalidates any older active code.',
+    security: bearerSecurity,
+    responses: {
+      202: { description: 'Verification code sent', schema: nullResponse },
+      ...commonErrorResponses,
+      409: conflict,
+    },
+  },
+  verifyEmail: {
+    operationId: 'auth.email.verify',
+    tags: ['Email verification'],
+    summary: 'Confirm the email address with a verification code',
+    description:
+      'Consumes the active code and marks the authenticated account as verified. Codes expire, are attempt-limited, and can only be used once.',
+    security: bearerSecurity,
+    request: { body: verifyEmailSchema },
+    responses: {
+      204: noContentResponse,
       ...commonErrorResponses,
     },
   },

@@ -39,4 +39,20 @@ export class SmtpEmailSender implements EmailSender {
 
     this.logger.info({ email }, 'Password reset OTP sent');
   }
+
+  async sendVerificationCode(email: string, code: string, expiresAt: Date): Promise<void> {
+    await this.transporter.sendMail({
+      from: this.config.smtp.from,
+      to: email,
+      subject: 'Verify your email address',
+      text: [
+        `Your verification code is: ${code}`,
+        '',
+        `It expires at ${expiresAt.toISOString()}.`,
+        'If you did not register for an account, you can ignore this email.',
+      ].join('\n'),
+    });
+
+    this.logger.info({ email }, 'Email verification code sent');
+  }
 }

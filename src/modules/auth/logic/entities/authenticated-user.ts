@@ -9,7 +9,12 @@ export class AuthenticatedUser {
     readonly sessionVersion: number,
     readonly mfaEnabled: boolean,
     readonly mfaEnrolledAt: Date | null,
+    readonly emailVerifiedAt: Date | null = null,
   ) {}
+
+  get isEmailVerified(): boolean {
+    return this.emailVerifiedAt !== null;
+  }
 
   static fromRecord(record: UserRecord): AuthenticatedUser {
     return new AuthenticatedUser(
@@ -20,6 +25,7 @@ export class AuthenticatedUser {
       record.sessionVersion,
       record.mfaEnabled,
       record.mfaEnrolledAt,
+      record.emailVerifiedAt,
     );
   }
 }

@@ -78,6 +78,14 @@ export class OtpConfig {
   ) {}
 }
 
+export class EmailVerificationConfig {
+  constructor(
+    readonly ttlSeconds: number,
+    readonly maxAttempts: number,
+    readonly resendCooldownSeconds: number,
+  ) {}
+}
+
 export class MfaConfig {
   constructor(
     readonly enabled: boolean,
@@ -234,6 +242,7 @@ export class AppConfig {
 
   readonly lockout: LockoutConfig;
   readonly otp: OtpConfig;
+  readonly verification: EmailVerificationConfig;
   readonly mfa: MfaConfig;
   readonly smtp: SmtpConfig;
 
@@ -304,6 +313,12 @@ export class AppConfig {
       env.readNumber('OTP_MAX_ATTEMPTS', 5),
       env.readNumber('OTP_RESEND_COOLDOWN_SECONDS', 60),
       env.readNumber('OTP_RESET_TOKEN_TTL_SECONDS', 600),
+    );
+
+    this.verification = new EmailVerificationConfig(
+      env.readNumber('EMAIL_VERIFICATION_TTL_SECONDS', 86_400),
+      env.readNumber('EMAIL_VERIFICATION_MAX_ATTEMPTS', 5),
+      env.readNumber('EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS', 60),
     );
 
     const mfaEncryptionKey = env.readOptional('MFA_ENCRYPTION_KEY');

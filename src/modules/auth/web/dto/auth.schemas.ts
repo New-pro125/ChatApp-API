@@ -48,6 +48,13 @@ export const resetPasswordSchema = z.object({
   newPassword: z.string().min(12).max(128),
 });
 
+export const verifyEmailSchema = z.object({
+  code: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, 'Verification code must be 6 digits'),
+});
+
 export const totpCodeSchema = z.string().regex(/^\d{6}$/, 'Authenticator code must be 6 digits');
 
 export const mfaCodeSchema = z.string().trim().min(6).max(64);

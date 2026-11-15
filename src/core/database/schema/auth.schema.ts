@@ -187,3 +187,26 @@ export const mfaRecoveryCodes = pgTable(
     index('mfa_recovery_codes_user_id_used_at_index').on(table.userId, table.usedAt),
   ],
 );
+
+export const emailVerificationCodes = pgTable(
+  'email_verification_codes',
+  {
+    id: uuid('id').primaryKey().default(sql`uuidv7()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    codeHash: text('code_hash').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    attempts: integer('attempts').notNull().default(0),
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    requestedIp: text('requested_ip'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check('email_verification_codes_attempts_nonnegative', sql`${table.attempts} >= 0`),
+    index('email_verification_codes_user_id_created_at_index').on(
+      table.userId,
+      table.createdAt.desc(),
+    ),
+  ],
+);

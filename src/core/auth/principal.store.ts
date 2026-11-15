@@ -12,6 +12,8 @@ export interface Principal {
   sessionVersion: number;
   mfaEnabled: boolean;
   mfaEnrolledAt: Date | null;
+  emailVerifiedAt: Date | null;
+  readonly isEmailVerified: boolean;
 }
 
 /**
