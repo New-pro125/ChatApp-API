@@ -54,7 +54,12 @@ export class SmtpConfig {
     readonly user: string | undefined,
     readonly pass: string | undefined,
     readonly from: string,
-  ) {}
+    readonly timeoutMs: number,
+  ) {
+    if (!Number.isInteger(this.timeoutMs) || this.timeoutMs <= 0) {
+      throw new Error('SMTP_TIMEOUT_MS must be a positive integer');
+    }
+  }
 
   get enabled(): boolean {
     return Boolean(this.host);
@@ -83,7 +88,19 @@ export class EmailVerificationConfig {
     readonly ttlSeconds: number,
     readonly maxAttempts: number,
     readonly resendCooldownSeconds: number,
-  ) {}
+  ) {
+    if (!Number.isInteger(this.ttlSeconds) || this.ttlSeconds <= 0) {
+      throw new Error('EMAIL_VERIFICATION_TTL_SECONDS must be a positive integer');
+    }
+
+    if (!Number.isInteger(this.maxAttempts) || this.maxAttempts < 1) {
+      throw new Error('EMAIL_VERIFICATION_MAX_ATTEMPTS must be a positive integer');
+    }
+
+    if (!Number.isInteger(this.resendCooldownSeconds) || this.resendCooldownSeconds < 0) {
+      throw new Error('EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS must be zero or greater');
+    }
+  }
 }
 
 export class CaptchaConfig {
@@ -373,6 +390,7 @@ export class AppConfig {
       env.readOptional('SMTP_USER'),
       env.readOptional('SMTP_PASS'),
       env.readString('SMTP_FROM', 'no-reply@example.com'),
+      env.readNumber('SMTP_TIMEOUT_MS', 10_000),
     );
 
     this.github = new OAuthProviderConfig(

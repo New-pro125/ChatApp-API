@@ -17,6 +17,9 @@ export class SmtpEmailSender implements EmailSender {
       host: config.smtp.host,
       port: config.smtp.port,
       secure: config.smtp.secure,
+      connectionTimeout: config.smtp.timeoutMs,
+      greetingTimeout: config.smtp.timeoutMs,
+      socketTimeout: config.smtp.timeoutMs,
       auth:
         config.smtp.user && config.smtp.pass
           ? { user: config.smtp.user, pass: config.smtp.pass }

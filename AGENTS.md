@@ -180,7 +180,9 @@ Do not regress these behaviors:
   never fails when the email cannot be delivered.
 - Email-verification codes are Argon2-hashed, expire after
   `EMAIL_VERIFICATION_TTL_SECONDS`, are limited to
-  `EMAIL_VERIFICATION_MAX_ATTEMPTS`, and are single-use. Requesting a new code
+  `EMAIL_VERIFICATION_MAX_ATTEMPTS`, and are single-use. Issuance is serialized
+  per user (row lock plus a partial unique index on active codes), so
+  concurrent resends cannot both pass the cooldown. Requesting a new code
   invalidates older active codes and is rejected with `429 RATE_LIMITED` (and
   `Retry-After`) inside the resend cooldown. Resending for an already verified
   address returns `409 CONFLICT`.

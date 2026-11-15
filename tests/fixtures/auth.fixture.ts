@@ -2,10 +2,12 @@ import type { Container } from 'inversify';
 import type { AuthModule } from '@/modules/auth/auth.module.js';
 import { AUTH_TYPES } from '@/modules/auth/auth.types.js';
 import { AuthenticatedUser } from '@/modules/auth/logic/entities/authenticated-user.js';
+import type { OAuthProfile } from '@/modules/auth/logic/entities/oauth-profile.js';
 import type { DeviceContext } from '@/modules/auth/logic/entities/refresh-token-record.js';
 import type { UserRecord } from '@/modules/auth/logic/entities/user-record.js';
 import type { CaptchaVerifier } from '@/modules/auth/logic/ports/captcha.verifier.js';
 import type { EmailSender } from '@/modules/auth/logic/ports/email.sender.js';
+import type { OAuthAccountRepository } from '@/modules/auth/logic/ports/oauth-account.repository.js';
 import type { PasswordHasher } from '@/modules/auth/logic/ports/password.hasher.js';
 import type { UserRepository } from '@/modules/auth/logic/ports/user.repository.js';
 import type { IssuedTokens, TokenService } from '@/modules/auth/logic/token.service.js';
@@ -26,6 +28,7 @@ export class AuthFixture {
   private readonly tokenService: TokenService;
   private readonly userRepository: UserRepository;
   private readonly passwordHasher: PasswordHasher;
+  private readonly oauthAccounts: OAuthAccountRepository;
 
   constructor(private readonly app: TestApp) {
     const authModule = app.application.getModule<AuthModule>('auth');
@@ -43,6 +46,9 @@ export class AuthFixture {
     this.tokenService = this.container.get<TokenService>(AUTH_TYPES.TokenService);
     this.userRepository = this.container.get<UserRepository>(AUTH_TYPES.UserRepository);
     this.passwordHasher = this.container.get<PasswordHasher>(AUTH_TYPES.PasswordHasher);
+    this.oauthAccounts = this.container.get<OAuthAccountRepository>(
+      AUTH_TYPES.OAuthAccountRepository,
+    );
   }
 
   /**
@@ -64,12 +70,44 @@ export class AuthFixture {
       .post('/api/auth/register')
       .send({ email, displayName, password });
 
+    if (response.status === 201) {
+      // Registration dispatches the initial code without waiting for SMTP, so
+      // tests wait for the captured code before asserting on it.
+      await this.waitForVerificationCode(email);
+    }
+
     return {
       response,
       email,
       displayName,
       password,
     };
+  }
+
+  async waitForVerificationCode(email: string, timeoutMs = 5000): Promise<string> {
+    const deadline = Date.now() + timeoutMs;
+
+    for (;;) {
+      const code = this.emails.verificationCodeFor(email);
+
+      if (code) {
+        return code;
+      }
+
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting for a verification code for ${email}`);
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+
+  linkOAuth(profile: OAuthProfile): Promise<UserRecord> {
+    if (profile.email === null) {
+      throw new Error('linkOAuth requires a verified email');
+    }
+
+    return this.oauthAccounts.resolve(profile as OAuthProfile & { readonly email: string });
   }
 
   async createUser(params: TestUserRegistration = {}): Promise<UserRecord> {

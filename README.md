@@ -1,4 +1,4 @@
-# inversify-passport
+# ChatApp-API
 
 Express 5 + TypeScript API with a module-based, object-oriented architecture built on Inversify 8, Passport, PostgreSQL, and Redis.
 
@@ -165,11 +165,12 @@ hashes, expire after `EMAIL_VERIFICATION_TTL_SECONDS`, and are limited to
 `EMAIL_VERIFICATION_MAX_ATTEMPTS` guesses. Requesting a new code invalidates
 any older active code, and requests inside
 `EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS` return `429 RATE_LIMITED` with a
-`Retry-After` header. Resending for an account that is already verified returns
-`409 CONFLICT`.
+`Retry-After` header. Issuance is serialized per account, so concurrent resends
+cannot both pass the cooldown. Resending for an account that is already
+verified returns `409 CONFLICT`.
 
 Unverified users can still log in, review their sessions, change their password,
-and manage MFA, but messaging and upload routes are gated by
+and manage MFA, but messaging and upload routes will be gated by
 `RequireVerifiedEmailMiddleware`, which returns `403 EMAIL_NOT_VERIFIED` until
 the address is confirmed. `GET /api/auth/me` exposes `emailVerifiedAt` so
 clients can display and prompt for verification.
@@ -269,7 +270,9 @@ Error:
   "error": {
     "code": "VALIDATION_ERROR",
     "message": "Invalid request",
-    "details": [{ "path": "email", "message": "Invalid email", "code": "invalid_format" }]
+    "details": [
+      { "path": "email", "message": "Invalid email", "code": "invalid_format" }
+    ]
   },
   "meta": {
     "requestId": "b4c1f4d2-..."
@@ -302,38 +305,6 @@ domain codes to statuses, converts `UniqueConstraintException` to
 `409 CONFLICT`, sanitizes repository and unknown failures to `INTERNAL_ERROR`,
 and sets `Retry-After` for `AccountLockedException`. Zod and body-parser
 failures are normalized in the same mapper.
-
-## Database access: `pg` versus Drizzle
-
-The current repositories use hand-written SQL over a shared `pg.Pool`, with
-explicit row interfaces, row mappers, and `node-pg-migrate` migrations. This is
-not a scalability bottleneck by itself: the pool controls connections, queries
-are explicit, and repositories already isolate SQL from domain entities.
-
-The tradeoff is maintenance:
-
-- **Typing:** raw SQL rows are trusted manually. A renamed column or a bad join
-  fails at runtime, not at type-check time.
-- **Boilerplate:** each table needs a row type, a mapper, and a column list.
-  Drizzle infers result types from a schema and removes most of that for CRUD,
-  joins, filters, and partial selects.
-- **Migrations:** `node-pg-migrate` is already explicit and working. Drizzle
-  would need a schema-first migration strategy (`drizzle-kit`) and a baseline
-  for the existing migrations. Keeping both tools would create two sources of
-  truth.
-- **Complex SQL:** transactions, `ON CONFLICT`, CTEs, and partial indexes still
-  require careful SQL. Drizzle improves the typed surface around them but does
-  not eliminate the SQL.
-- **Domain boundaries:** Drizzle returns schema-shaped rows. Repositories would
-  still map them to domain records if the architecture is to stay clean.
-
-Recommendation: keep `pg` for the current three repositories. It is predictable
-and the query surface is small. Adopt Drizzle when the number of entities,
-joins, dynamic filters, and paginated read models grows enough that hand-written
-row types and mappers become the main source of defects. If that happens, do a
-full adoption with a schema baseline rather than mixing Drizzle and raw SQL
-indefinitely. Drizzle does not make the database faster; it improves type
-safety and reduces query boilerplate.
 
 ## Rate limiting
 
@@ -390,9 +361,10 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'
 `DOCS_ENABLED` controls the OpenAPI document and Scalar UI. `METRICS_ENABLED`
 and `METRICS_TOKEN` control the Prometheus endpoint. The `HTTP_*`, `TRUST_PROXY`,
 `APP_ORIGINS`, and `HEALTH_CACHE_TTL_MS` variables tune server timeouts, proxy
-trust, the CORS allowlist, and readiness caching. See `.env.example` for the
-full list of database pool, HTTP hardening, auth hardening, OTP, email
-verification, captcha, MFA, SMTP, OAuth, SSO, and Docker Compose options.
+trust, the CORS allowlist, and readiness caching. `SMTP_TIMEOUT_MS` bounds SMTP
+connection, greeting, and socket waits. See `.env.example` for the full list of
+database pool, HTTP hardening, auth hardening, OTP, email verification, captcha,
+MFA, SMTP, OAuth, SSO, and Docker Compose options.
 
 ## Scripts
 
@@ -460,7 +432,7 @@ provisioning keeps working with any compatible endpoint.
 Source imports use `@/...`:
 
 ```ts
-import { AuthService } from '@/modules/auth/logic/auth.service.js';
+import { AuthService } from "@/modules/auth/logic/auth.service.js";
 ```
 
 - `tsx` resolves aliases during development.

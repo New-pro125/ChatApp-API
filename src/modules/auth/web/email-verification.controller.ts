@@ -19,10 +19,12 @@ export class EmailVerificationController {
   resend: RequestHandler = async (req, res) => {
     const user = this.requireUser(req);
 
-    await this.verification.request(user, req.ip ?? null);
+    const delivered = await this.verification.request(user, req.ip ?? null);
 
     this.response.accepted(res, null, {
-      message: 'A verification code has been sent to your email address.',
+      message: delivered
+        ? 'A verification code has been sent to your email address.'
+        : 'A verification code was created but could not be delivered. Try resending shortly.',
     });
   };
 

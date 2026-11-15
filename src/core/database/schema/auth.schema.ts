@@ -204,6 +204,11 @@ export const emailVerificationCodes = pgTable(
   },
   (table) => [
     check('email_verification_codes_attempts_nonnegative', sql`${table.attempts} >= 0`),
+    // A user may only have one unconsumed code; issuance consumes older rows in
+    // the same transaction. This closes the concurrent-resend race.
+    uniqueIndex('email_verification_codes_user_id_active_unique')
+      .on(table.userId)
+      .where(sql`${table.consumedAt} is null`),
     index('email_verification_codes_user_id_created_at_index').on(
       table.userId,
       table.createdAt.desc(),

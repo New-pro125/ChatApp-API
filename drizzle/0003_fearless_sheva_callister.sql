@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "email_verification_codes_user_id_active_unique" ON "email_verification_codes" USING btree ("user_id") WHERE "email_verification_codes"."consumed_at" is null;

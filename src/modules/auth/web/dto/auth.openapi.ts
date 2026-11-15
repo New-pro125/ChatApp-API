@@ -128,6 +128,11 @@ const serviceUnavailable = {
   schema: apiErrorResponseSchema,
 };
 
+const resendCooldown = {
+  description: 'Resend cooldown is active; Retry-After carries the remaining seconds',
+  schema: apiErrorResponseSchema,
+};
+
 /**
  * OpenAPI contracts for the authentication module.
  *
@@ -208,6 +213,7 @@ export const authContracts = {
       202: { description: 'Verification code sent', schema: nullResponse },
       ...commonErrorResponses,
       409: conflict,
+      429: resendCooldown,
     },
   },
   verifyEmail: {

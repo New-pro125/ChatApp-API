@@ -44,7 +44,9 @@ export class AuthController {
     const user = await this.auth.register(input);
     const tokens = await this.tokens.issue(user, this.deviceContext(req, input));
 
-    await this.sendInitialVerification(user, req);
+    // Sending the initial code must not slow down or fail registration. The
+    // service logs delivery failures and the client can request a new code.
+    void this.sendInitialVerification(user, req.ip ?? null);
 
     this.response.created(res, { user, tokens });
   };
@@ -98,11 +100,12 @@ export class AuthController {
 
   /**
    * Registration succeeds even when the verification email cannot be sent; the
-   * client can request another code from `POST /api/auth/email/resend`.
+   * client can request another code from `POST /api/auth/email/resend`. Callers
+   * intentionally do not await this so SMTP latency never blocks signup.
    */
-  private async sendInitialVerification(user: AuthenticatedUser, req: Request): Promise<void> {
+  private async sendInitialVerification(user: AuthenticatedUser, ip: string | null): Promise<void> {
     try {
-      await this.emailVerification.request(user, req.ip ?? null);
+      await this.emailVerification.request(user, ip);
     } catch (error) {
       this.logger.error(
         { err: error, userId: user.id },

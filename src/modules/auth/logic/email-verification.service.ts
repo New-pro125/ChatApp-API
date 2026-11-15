@@ -13,7 +13,6 @@ import type { TokenGenerator } from '@/modules/auth/data/token.generator.js';
 import type { EmailSender } from '@/modules/auth/logic/ports/email.sender.js';
 import type { EmailVerificationRepository } from '@/modules/auth/logic/ports/email-verification.repository.js';
 import type { PasswordHasher } from '@/modules/auth/logic/ports/password.hasher.js';
-import type { UserRepository } from '@/modules/auth/logic/ports/user.repository.js';
 
 /** The subset of the authenticated user needed to issue a verification code. */
 export interface EmailVerificationRecipient {
@@ -33,7 +32,6 @@ export interface EmailVerificationRecipient {
 @injectable()
 export class EmailVerificationService {
   constructor(
-    @inject(AUTH_TYPES.UserRepository) private readonly users: UserRepository,
     @inject(AUTH_TYPES.EmailVerificationRepository)
     private readonly codes: EmailVerificationRepository,
     @inject(AUTH_TYPES.PasswordHasher) private readonly hasher: PasswordHasher,
@@ -47,43 +45,39 @@ export class EmailVerificationService {
    * Sends a fresh verification code after enforcing the resend cooldown.
    *
    * Registration calls this as well, so a newly created account always has an
-   * active code waiting in its inbox.
+   * active code waiting in its inbox. The boolean reports whether the email
+   * was handed to the transport; registration ignores it.
    */
-  async request(recipient: EmailVerificationRecipient, ip: string | null): Promise<void> {
+  async request(recipient: EmailVerificationRecipient, ip: string | null): Promise<boolean> {
     if (recipient.emailVerifiedAt) {
       throw new EmailAlreadyVerifiedException();
     }
 
-    const lastCreatedAt = await this.codes.lastCreatedAt(recipient.id);
-
-    if (lastCreatedAt) {
-      const cooldownMs = this.config.verification.resendCooldownSeconds * 1000;
-      const remainingMs = cooldownMs - (Date.now() - lastCreatedAt.getTime());
-
-      if (remainingMs > 0) {
-        throw new ResendCooldownException(Math.max(1, Math.ceil(remainingMs / 1000)));
-      }
-    }
-
     const code = this.tokens.generateOtp();
     const codeHash = await this.hasher.hash(code);
-    const expiresAt = new Date(Date.now() + this.config.verification.ttlSeconds * 1000);
 
-    await this.codes.invalidateActive(recipient.id);
-    await this.codes.create({
+    const result = await this.codes.issue({
       userId: recipient.id,
       codeHash,
-      expiresAt,
+      ttlSeconds: this.config.verification.ttlSeconds,
+      cooldownSeconds: this.config.verification.resendCooldownSeconds,
       requestedIp: ip,
     });
 
+    if (!result.issued) {
+      throw new ResendCooldownException(result.retryAfterSeconds);
+    }
+
     try {
-      await this.email.sendVerificationCode(recipient.email, code, expiresAt);
+      await this.email.sendVerificationCode(recipient.email, code, result.expiresAt);
+      return true;
     } catch (error) {
       this.logger.error(
         { err: error, userId: recipient.id },
         'Failed to send email verification code',
       );
+
+      return false;
     }
   }
 
@@ -108,11 +102,22 @@ export class EmailVerificationService {
     const valid = await this.hasher.verify(record.codeHash, code);
 
     if (!valid) {
-      await this.codes.incrementAttempts(record.id);
+      const recorded = await this.codes.incrementAttempts(
+        record.id,
+        this.config.verification.maxAttempts,
+      );
+
+      if (!recorded) {
+        throw new OtpInvalidException('Too many invalid verification code attempts');
+      }
+
       throw new OtpInvalidException('Invalid verification code');
     }
 
-    await this.codes.markConsumed(record.id);
-    await this.users.markEmailVerified(userId, new Date());
+    const consumed = await this.codes.consumeAndMarkVerified(record.id, userId, new Date());
+
+    if (!consumed) {
+      throw new OtpExpiredException('Verification code has already been used or has expired');
+    }
   }
 }

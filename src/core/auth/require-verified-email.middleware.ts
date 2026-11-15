@@ -17,7 +17,7 @@ export class RequireVerifiedEmailMiddleware {
       return;
     }
 
-    if (!req.user.emailVerifiedAt) {
+    if (!req.user.isEmailVerified) {
       next(new EmailNotVerifiedException());
       return;
     }

@@ -1,4 +1,5 @@
 import { Container } from 'inversify';
+import type { Logger } from 'pino';
 import type { PrincipalStore } from '@/core/auth/principal.store.js';
 import { RequireBearerAuthMiddleware } from '@/core/auth/require-bearer-auth.middleware.js';
 import { RequireVerifiedEmailMiddleware } from '@/core/auth/require-verified-email.middleware.js';
@@ -118,6 +119,14 @@ export class AuthContainer extends Container {
       this.bind<EmailSender>(AUTH_TYPES.EmailSender).to(SmtpEmailSender).inSingletonScope();
     } else {
       this.bind<EmailSender>(AUTH_TYPES.EmailSender).to(LogEmailSender).inSingletonScope();
+
+      if (config.nodeEnv === 'production') {
+        root
+          .get<Logger>(CORE_TYPES.Logger)
+          .warn(
+            'SMTP is not configured; verification and password-reset codes will not be delivered',
+          );
+      }
     }
 
     this.bind<AccountLockoutService>(AUTH_TYPES.AccountLockoutService)

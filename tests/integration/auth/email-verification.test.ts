@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import type { RequireVerifiedEmailMiddleware } from '@/core/auth/require-verified-email.middleware.js';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import { EmailNotVerifiedException } from '@/core/errors/domain.error.js';
+import { AuthenticatedUser } from '@/modules/auth/logic/entities/authenticated-user.js';
 import { AuthFixture } from '../../fixtures/auth.fixture.js';
 import { expectError, expectNoContent, expectSuccess } from '../../helpers/assertions.js';
 import { TestApp } from '../../helpers/test-app.js';
@@ -52,19 +53,99 @@ describe('Auth: Email Verification', () => {
       const me = expectSuccess<AuthenticatedUserBody>(meRes, 200);
       expect(me.emailVerifiedAt).toBeNull();
     });
+    it('stores the code only as an Argon2 hash', async () => {
+      const { email } = await auth.register();
+      const code = await auth.waitForVerificationCode(email);
+
+      const rows = await app.pool.query<{ code_hash: string }>(
+        'SELECT code_hash FROM email_verification_codes WHERE user_id = (SELECT id FROM users WHERE email = $1)',
+        [email],
+      );
+
+      const codeHash = rows.rows[0]?.code_hash;
+      expect(codeHash).toBeDefined();
+      expect(codeHash).not.toBe(code);
+      expect(codeHash).toMatch(/^\$argon2/);
+    });
+
+    it('succeeds when the verification email cannot be delivered', async () => {
+      auth.emails.failVerificationSends = true;
+
+      const res = await app.request.post('/api/auth/register').send({
+        email: 'smtp-down@example.com',
+        displayName: 'SMTP Down',
+        password: 'StrongPassword!123',
+      });
+
+      expectSuccess<AuthenticationBody>(res, 201);
+      expect(auth.emails.verificationCodeFor('smtp-down@example.com')).toBeUndefined();
+
+      const deadline = Date.now() + 5000;
+
+      while (auth.emails.verificationSendAttempts === 0) {
+        if (Date.now() >= deadline) {
+          throw new Error('Timed out waiting for the verification send attempt');
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+
+      const rows = await app.pool.query<{ count: number }>(
+        'SELECT count(*)::int AS count FROM email_verification_codes WHERE user_id = (SELECT id FROM users WHERE email = $1)',
+        ['smtp-down@example.com'],
+      );
+      expect(rows.rows[0]?.count).toBe(1);
+    });
   });
 
   describe('POST /api/auth/email/resend', () => {
-    it('issues a new code when the cooldown has elapsed', async () => {
-      const user = await auth.createUser({ email: 'resend@example.com' });
-      const tokens = await auth.mintTokens(user);
+    it('issues a new code once the cooldown has elapsed and invalidates the old one', async () => {
+      const { response, email } = await auth.register();
+      const data = expectSuccess<AuthenticationBody>(response, 201);
+      const firstCode = await auth.waitForVerificationCode(email);
+
+      await app.pool.query(
+        "UPDATE email_verification_codes SET created_at = now() - interval '2 minutes' WHERE user_id = $1",
+        [data.user.id],
+      );
 
       const res = await app.request
         .post('/api/auth/email/resend')
-        .set(auth.bearerHeader(tokens.accessToken));
+        .set(auth.bearerHeader(data.tokens.accessToken));
 
       expectSuccess(res, 202);
-      expect(auth.emails.verificationCodeFor(user.email)).toMatch(/^\d{6}$/);
+
+      const secondCode = auth.emails.verificationCodeFor(email);
+      expect(secondCode).toMatch(/^\d{6}$/);
+      expect(secondCode).not.toBe(firstCode);
+
+      const oldCodeRes = await app.request
+        .post('/api/auth/email/verify')
+        .set(auth.bearerHeader(data.tokens.accessToken))
+        .send({ code: firstCode });
+
+      expectError(oldCodeRes, 400, 'OTP_INVALID');
+
+      const newCodeRes = await app.request
+        .post('/api/auth/email/verify')
+        .set(auth.bearerHeader(data.tokens.accessToken))
+        .send({ code: secondCode });
+
+      expectNoContent(newCodeRes);
+    });
+
+    it('allows only one of two concurrent resends', async () => {
+      const user = await auth.createUser({ email: 'concurrent-resend@example.com' });
+      const tokens = await auth.mintTokens(user);
+      const bearer = auth.bearerHeader(tokens.accessToken);
+
+      const first = app.request.post('/api/auth/email/resend').set(bearer);
+      const second = app.request.post('/api/auth/email/resend').set(bearer);
+
+      const responses = await Promise.all([first, second]);
+      const statuses = responses.map((response) => response.status).sort();
+
+      expect(statuses).toEqual([202, 429]);
     });
 
     it('returns 429 RATE_LIMITED with Retry-After inside the cooldown window', async () => {
@@ -82,6 +163,19 @@ describe('Auth: Email Verification', () => {
       expect(retryAfter).toBeDefined();
       expect(Number(retryAfter)).toBeGreaterThan(0);
       expect(auth.emails.verificationCodeFor(email)).toMatch(/^\d{6}$/);
+    });
+
+    it('reports a delivery failure without failing the request', async () => {
+      const user = await auth.createUser({ email: 'resend-smtp-down@example.com' });
+      const tokens = await auth.mintTokens(user);
+      auth.emails.failVerificationSends = true;
+
+      const res = await app.request
+        .post('/api/auth/email/resend')
+        .set(auth.bearerHeader(tokens.accessToken));
+
+      expectSuccess(res, 202);
+      expect(res.body.message).toContain('could not be delivered');
     });
 
     it('returns 409 CONFLICT when the email is already verified', async () => {
@@ -136,6 +230,34 @@ describe('Auth: Email Verification', () => {
         .send({ code });
 
       expectError(replayRes, 400, 'OTP_EXPIRED');
+    });
+
+    it('rejects an expired code', async () => {
+      const user = await auth.createUser({ email: 'expired@example.com' });
+      const tokens = await auth.mintTokens(user);
+
+      await app.request.post('/api/auth/email/resend').set(auth.bearerHeader(tokens.accessToken));
+
+      const code = auth.emails.verificationCodeFor(user.email);
+      expect(code).toBeDefined();
+
+      await app.pool.query(
+        "UPDATE email_verification_codes SET expires_at = now() - interval '1 second' WHERE user_id = $1",
+        [user.id],
+      );
+
+      const res = await app.request
+        .post('/api/auth/email/verify')
+        .set(auth.bearerHeader(tokens.accessToken))
+        .send({ code });
+
+      expectError(res, 400, 'OTP_EXPIRED');
+    });
+
+    it('returns 401 UNAUTHORIZED without a bearer token', async () => {
+      const res = await app.request.post('/api/auth/email/verify').send({ code: '123456' });
+
+      expectError(res, 401, 'UNAUTHORIZED');
     });
 
     it('rejects an incorrect code and increments the attempt counter', async () => {
@@ -204,7 +326,7 @@ describe('Auth: Email Verification', () => {
   describe('RequireVerifiedEmailMiddleware', () => {
     const callMiddleware = (
       middleware: RequireVerifiedEmailMiddleware,
-      user: { emailVerifiedAt: Date | null } | undefined,
+      user: AuthenticatedUser | undefined,
     ): unknown => {
       const req = { user } as unknown as Request;
       const res = {} as Response;
@@ -215,12 +337,24 @@ describe('Auth: Email Verification', () => {
       return (next as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]?.[0];
     };
 
+    const userWithEmail = (verified: boolean): AuthenticatedUser =>
+      new AuthenticatedUser(
+        'user-id',
+        'user@example.com',
+        'Test User',
+        new Date(),
+        1,
+        false,
+        null,
+        verified ? new Date() : null,
+      );
+
     it('blocks unverified users with EMAIL_NOT_VERIFIED', () => {
       const middleware = app.container.get<RequireVerifiedEmailMiddleware>(
         CORE_TYPES.RequireVerifiedEmail,
       );
 
-      const result = callMiddleware(middleware, { emailVerifiedAt: null });
+      const result = callMiddleware(middleware, userWithEmail(false));
 
       expect(result).toBeInstanceOf(EmailNotVerifiedException);
     });
@@ -230,7 +364,7 @@ describe('Auth: Email Verification', () => {
         CORE_TYPES.RequireVerifiedEmail,
       );
 
-      const result = callMiddleware(middleware, { emailVerifiedAt: new Date() });
+      const result = callMiddleware(middleware, userWithEmail(true));
 
       expect(result).toBeUndefined();
     });

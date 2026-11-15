@@ -57,6 +57,10 @@ export class PostgresOAuthAccountRepository implements OAuthAccountRepository {
 
       if (!user) {
         user = await this.createUser(profile, tx);
+      } else if (user.emailVerifiedAt === null) {
+        // The provider has verified this address, so linking the account also
+        // confirms the existing password account's email.
+        user = await this.markUserVerified(user.id, tx);
       }
 
       await tx.insert(oauthAccounts).values({
@@ -119,6 +123,25 @@ export class PostgresOAuthAccountRepository implements OAuthAccountRepository {
 
     if (!row) {
       throw new PersistenceException('PostgreSQL did not return the created OAuth user');
+    }
+
+    return this.mapper.toRecord(row);
+  }
+
+  private async markUserVerified(userId: string, db: AppDatabase): Promise<UserRecord> {
+    const rows = await db
+      .update(users)
+      .set({
+        emailVerifiedAt: sql`now()`,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(users.id, userId))
+      .returning(userSelection);
+
+    const row = rows[0];
+
+    if (!row) {
+      throw new PersistenceException('PostgreSQL did not return the verified OAuth user');
     }
 
     return this.mapper.toRecord(row);

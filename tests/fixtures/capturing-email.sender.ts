@@ -7,6 +7,11 @@ import type { EmailSender } from '@/modules/auth/logic/ports/email.sender.js';
  * complete OTP and verification flows without a real SMTP server.
  */
 export class CapturingEmailSender implements EmailSender {
+  /** When true, verification sends fail so tests can exercise delivery errors. */
+  failVerificationSends: boolean = false;
+  /** Number of verification send attempts, including failed ones. */
+  verificationSendAttempts = 0;
+
   private readonly otps = new Map<string, string>();
   private readonly verificationCodes = new Map<string, string>();
 
@@ -17,6 +22,12 @@ export class CapturingEmailSender implements EmailSender {
   }
 
   sendVerificationCode(email: string, code: string): Promise<void> {
+    this.verificationSendAttempts += 1;
+
+    if (this.failVerificationSends) {
+      return Promise.reject(new Error('Simulated SMTP failure'));
+    }
+
     this.verificationCodes.set(email, code);
 
     return Promise.resolve();
@@ -31,6 +42,8 @@ export class CapturingEmailSender implements EmailSender {
   }
 
   clear(): void {
+    this.failVerificationSends = false;
+    this.verificationSendAttempts = 0;
     this.otps.clear();
     this.verificationCodes.clear();
   }
