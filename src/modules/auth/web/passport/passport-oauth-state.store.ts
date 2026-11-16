@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { Request } from 'express';
 import { inject, injectable } from 'inversify';
 import type { StateStore } from 'passport-oauth2';
@@ -27,9 +28,17 @@ export class PassportOAuthStateStore {
     _meta: unknown,
     callback: StateStoreCallback,
   ): void => {
+    // passport-oauth2 forwards the strategy's `state` option to custom stores.
+    // The router sets it to `true` only to reach this store, so it is not a
+    // usable nonce. Issue a fresh, unguessable value for every redirect.
+    const issuedState =
+      typeof state === 'string' && state.length >= 16
+        ? state
+        : randomBytes(24).toString('base64url');
+
     void this.states
-      .save(req, { state })
-      .then(() => callback(null, state))
+      .save(req, { state: issuedState })
+      .then(() => callback(null, issuedState))
       .catch((error: unknown) =>
         callback(error instanceof Error ? error : new Error(String(error))),
       );
