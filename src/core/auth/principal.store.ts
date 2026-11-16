@@ -8,6 +8,10 @@ export interface Principal {
   id: string;
   email: string;
   displayName: string;
+  username: string | null;
+  bio: string | null;
+  phone: string | null;
+  avatarKey: string | null;
   createdAt: Date;
   sessionVersion: number;
   mfaEnabled: boolean;

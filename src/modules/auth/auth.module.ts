@@ -1,7 +1,7 @@
 import type { Router } from 'express';
 import type { Container } from 'inversify';
 import type { AppConfig } from '@/core/config/app.config.js';
-import type { AuthRateLimiter } from '@/core/http/middleware/rate-limit.js';
+import type { AuthRateLimiter, ProfileRateLimiter } from '@/core/http/middleware/rate-limit.js';
 import type { AppModule } from '@/core/modules/app.module.js';
 import { AuthContainer } from '@/modules/auth/auth.container.js';
 import { AUTH_TYPES } from '@/modules/auth/auth.types.js';
@@ -26,6 +26,7 @@ export class AuthModule implements AppModule {
 
   async configure(): Promise<void> {
     this.container.get<AuthRateLimiter>(AUTH_TYPES.AuthRateLimiter).initialize();
+    this.container.get<ProfileRateLimiter>(AUTH_TYPES.ProfileRateLimiter).initialize();
 
     await this.container.get<PassportConfigurer>(AUTH_TYPES.PassportConfigurer).configure();
   }

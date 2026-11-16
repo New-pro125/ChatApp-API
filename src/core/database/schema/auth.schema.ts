@@ -31,6 +31,10 @@ export const users = pgTable(
     id: uuid('id').primaryKey().default(sql`uuidv7()`),
     email: text('email').notNull(),
     displayName: text('display_name').notNull(),
+    username: text('username'),
+    bio: text('bio'),
+    phone: text('phone'),
+    avatarKey: text('avatar_key'),
     passwordHash: text('password_hash'),
     emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
     failedLoginAttempts: integer('failed_login_attempts').notNull().default(0),
@@ -46,8 +50,23 @@ export const users = pgTable(
   },
   (table) => [
     uniqueIndex('users_email_lower_unique').on(sql`lower(${table.email})`),
+    uniqueIndex('users_username_lower_unique').on(sql`lower(${table.username})`),
+    uniqueIndex('users_phone_unique').on(table.phone),
     check('users_failed_login_attempts_nonnegative', sql`${table.failedLoginAttempts} >= 0`),
     check('users_session_version_positive', sql`${table.sessionVersion} > 0`),
+    check(
+      'users_username_format',
+      sql`${table.username} is null or (${table.username} = lower(${table.username}) and ${table.username} ~ '^[a-z][a-z0-9_]{4,31}$')`,
+    ),
+    check('users_bio_length', sql`${table.bio} is null or char_length(${table.bio}) <= 70`),
+    check(
+      'users_phone_format',
+      sql`${table.phone} is null or ${table.phone} ~ '^\\+[1-9][0-9]{7,14}$'`,
+    ),
+    check(
+      'users_avatar_key_length',
+      sql`${table.avatarKey} is null or char_length(${table.avatarKey}) between 1 and 512`,
+    ),
     check(
       'users_mfa_enrollment_consistency',
       sql`not ${table.mfaEnabled} or (${table.mfaSecretCiphertext} is not null and ${table.mfaEnrolledAt} is not null)`,

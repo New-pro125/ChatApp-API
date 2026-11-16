@@ -102,6 +102,7 @@ docs in a deployed environment. The runtime registry rejects duplicate
 | `POST`   | `/api/auth/logout`        | Revoke the calling device's tokens               |
 | `POST`   | `/api/auth/logout-all`    | Revoke every device for the account              |
 | `GET`    | `/api/auth/me`            | Return the authenticated user                    |
+| `PATCH`  | `/api/auth/me`            | Update the authenticated user's profile          |
 | `GET`    | `/api/auth/sessions`      | List active refresh-token sessions               |
 | `DELETE` | `/api/auth/sessions/:id`  | Revoke one session                               |
 
@@ -119,6 +120,28 @@ token is treated as theft and revokes the entire family, forcing both the
 attacker and the victim to re-authenticate. Logging out one device revokes its
 refresh lineage and denylists the outstanding access token in Redis; the
 denylist fails open (tokens then expire by TTL) if Redis is unavailable.
+
+### User profile
+
+`PATCH /api/auth/me` updates the authenticated user's profile and returns the
+full user record. `GET /api/auth/me`, registration, login, and OAuth responses
+include the same fields.
+
+| Field         | Rules                                                                            |
+| ------------- | -------------------------------------------------------------------------------- |
+| `displayName` | Screen name, 1-100 characters. Always set.                                       |
+| `username`    | Optional, unique (case-insensitive), `^[a-z][a-z0-9_]{4,31}$`, stored lowercase. |
+| `bio`         | Optional, at most 70 characters.                                                 |
+| `phone`       | Optional, unique, E.164 format such as `+15551234567`.                           |
+| `avatarKey`   | Read-only. Reserved for the media pipeline; clients cannot set it.               |
+
+Send only the fields you want to change: an omitted field keeps its current
+value and `null` clears a nullable field. An empty payload is rejected with
+`400 VALIDATION_ERROR`. A username or phone that is already in use returns
+`409 CONFLICT` with a field-specific message.
+
+`phone` is informational and **not verified** yet; SMS verification and avatar
+uploads arrive in later phases, so treat the stored number as untrusted.
 
 ### Two-factor authentication
 
@@ -315,9 +338,11 @@ failures are normalized in the same mapper.
 
 Authentication endpoints use `express-rate-limit` with a Redis-backed fixed
 window (`rate-limit-redis`). Counters survive API restarts and are shared across
-instances that use the same Redis database. The current policy is 20 requests
-per 15 minutes per client IP across the auth routes. Redis store errors are
-treated as server errors rather than silently allowing requests.
+instances that use the same Redis database. The auth routes allow 20 requests
+per 15 minutes per client IP, and profile updates use a separate `rl:profile:`
+bucket (30 requests per 15 minutes) so editing a profile never consumes the
+login or registration quota. Redis store errors are treated as server errors
+rather than silently allowing requests.
 
 ## Account lockout
 

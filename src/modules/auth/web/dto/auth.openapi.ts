@@ -22,6 +22,7 @@ import {
   verifyMfaSchema,
   verifyOtpSchema,
 } from '@/modules/auth/web/dto/auth.schemas.js';
+import { updateProfileSchema } from '@/modules/auth/web/dto/profile.schemas.js';
 
 const bearerSecurity = [{ bearerAuth: [] }] as const;
 
@@ -35,6 +36,10 @@ export const authenticatedUserSchema = z
     mfaEnabled: z.boolean(),
     mfaEnrolledAt: z.iso.datetime().nullable(),
     emailVerifiedAt: z.iso.datetime().nullable(),
+    username: z.string().nullable(),
+    bio: z.string().nullable(),
+    phone: z.string().nullable(),
+    avatarKey: z.string().nullable(),
   })
   .meta({ id: 'AuthenticatedUser' });
 
@@ -200,6 +205,20 @@ export const authContracts = {
     responses: {
       200: { description: 'Authenticated user', schema: userResponse },
       ...commonErrorResponses,
+    },
+  },
+  updateProfile: {
+    operationId: 'auth.updateProfile',
+    tags: ['Auth'],
+    summary: 'Update the authenticated user profile',
+    description:
+      'Updates the screen name, username, bio, or phone. Omitted fields are left unchanged and sending null clears a nullable field. The avatar key is read-only until the media pipeline is available.',
+    security: bearerSecurity,
+    request: { body: updateProfileSchema },
+    responses: {
+      200: { description: 'Updated authenticated user', schema: userResponse },
+      ...commonErrorResponses,
+      409: conflict,
     },
   },
   resendEmailVerification: {

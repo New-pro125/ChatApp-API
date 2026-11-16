@@ -63,6 +63,30 @@ export class EmailAlreadyVerifiedException extends DomainException {
   }
 }
 
+export class UsernameAlreadyTakenException extends DomainException {
+  readonly code = ErrorCode.CONFLICT;
+
+  constructor(message = 'Username is already taken', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}
+
+export class PhoneAlreadyRegisteredException extends DomainException {
+  readonly code = ErrorCode.CONFLICT;
+
+  constructor(message = 'Phone number is already registered', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}
+
+export class UserNotFoundException extends DomainException {
+  readonly code = ErrorCode.NOT_FOUND;
+
+  constructor(message = 'User not found', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}
+
 export class CaptchaRequiredException extends DomainException {
   readonly code = ErrorCode.CAPTCHA_REQUIRED;
 

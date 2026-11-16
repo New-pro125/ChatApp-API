@@ -2,7 +2,7 @@ import type { Router } from 'express';
 import { inject, injectable } from 'inversify';
 import type { RequireBearerAuthMiddleware } from '@/core/auth/require-bearer-auth.middleware.js';
 import { CORE_TYPES } from '@/core/container/core.types.js';
-import type { AuthRateLimiter } from '@/core/http/middleware/rate-limit.js';
+import type { AuthRateLimiter, ProfileRateLimiter } from '@/core/http/middleware/rate-limit.js';
 import type { RequestScopeMiddleware } from '@/core/http/middleware/request-scope.js';
 import { DocumentedRouter } from '@/core/http/openapi/documented-router.js';
 import type { OpenApiRegistry } from '@/core/http/openapi/openapi.registry.js';
@@ -12,6 +12,7 @@ import { authContracts, tokenContracts } from '@/modules/auth/web/dto/auth.opena
 import type { EmailVerificationController } from '@/modules/auth/web/email-verification.controller.js';
 import type { MfaController } from '@/modules/auth/web/mfa.controller.js';
 import type { PasswordResetController } from '@/modules/auth/web/password-reset.controller.js';
+import type { ProfileController } from '@/modules/auth/web/profile.controller.js';
 import type { OAuthRouter } from '@/modules/auth/web/routes/oauth.router.js';
 import type { TokenController } from '@/modules/auth/web/token.controller.js';
 
@@ -25,6 +26,7 @@ export class AuthRouter {
     @inject(AUTH_TYPES.RequestScope) scope: RequestScopeMiddleware,
     @inject(AUTH_TYPES.OAuthRouter) oauthRouter: OAuthRouter,
     @inject(AUTH_TYPES.AuthRateLimiter) private readonly limiter: AuthRateLimiter,
+    @inject(AUTH_TYPES.ProfileRateLimiter) private readonly profileLimiter: ProfileRateLimiter,
     @inject(CORE_TYPES.OpenApiRegistry) registry: OpenApiRegistry,
     @inject(CORE_TYPES.RequireAuth) private readonly requireAuth: RequireBearerAuthMiddleware,
   ) {
@@ -89,6 +91,18 @@ export class AuthRouter {
     this.routes.get('/me', authContracts.me, this.requireAuth.handle, (req, res, next) => {
       return req.container.get<AuthController>(AUTH_TYPES.AuthController).me(req, res, next);
     });
+
+    this.routes.patch(
+      '/me',
+      authContracts.updateProfile,
+      this.requireAuth.handle,
+      this.profileLimiter.handle,
+      (req, res, next) => {
+        return req.container
+          .get<ProfileController>(AUTH_TYPES.ProfileController)
+          .update(req, res, next);
+      },
+    );
 
     this.routes.post(
       '/email/resend',

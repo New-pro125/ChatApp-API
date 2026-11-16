@@ -9,6 +9,7 @@ import { UserRecordMapper, userSelection } from '@/modules/auth/data/user.mapper
 import type { UserRecord } from '@/modules/auth/logic/entities/user-record.js';
 import type {
   CreateUserInput,
+  UpdateProfileInput,
   UserRepository,
 } from '@/modules/auth/logic/ports/user.repository.js';
 
@@ -73,6 +74,53 @@ export class PostgresUserRepository implements UserRepository {
       }
 
       throw new PersistenceException('Failed to create user', { cause: error });
+    }
+  }
+
+  async updateProfile(id: string, input: UpdateProfileInput): Promise<UserRecord | null> {
+    const values: {
+      displayName?: string;
+      username?: string | null;
+      bio?: string | null;
+      phone?: string | null;
+      updatedAt: Date;
+    } = { updatedAt: new Date() };
+
+    if (input.displayName !== undefined) {
+      values.displayName = input.displayName;
+    }
+
+    if (input.username !== undefined) {
+      values.username = input.username;
+    }
+
+    if (input.bio !== undefined) {
+      values.bio = input.bio;
+    }
+
+    if (input.phone !== undefined) {
+      values.phone = input.phone;
+    }
+
+    try {
+      const rows = await this.db
+        .update(users)
+        .set(values)
+        .where(eq(users.id, id))
+        .returning(userSelection);
+
+      const row = rows[0];
+
+      return row ? this.mapper.toRecord(row) : null;
+    } catch (error) {
+      if (this.errors.isUniqueViolation(error)) {
+        throw new UniqueConstraintException(
+          this.errors.constraintName(error) ?? 'users_username_lower_unique',
+          { cause: error },
+        );
+      }
+
+      throw new PersistenceException('Failed to update user profile', { cause: error });
     }
   }
 

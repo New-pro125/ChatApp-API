@@ -10,6 +10,10 @@ export class AuthenticatedUser {
     readonly mfaEnabled: boolean,
     readonly mfaEnrolledAt: Date | null,
     readonly emailVerifiedAt: Date | null = null,
+    readonly username: string | null = null,
+    readonly bio: string | null = null,
+    readonly phone: string | null = null,
+    readonly avatarKey: string | null = null,
   ) {}
 
   get isEmailVerified(): boolean {
@@ -26,6 +30,10 @@ export class AuthenticatedUser {
       record.mfaEnabled,
       record.mfaEnrolledAt,
       record.emailVerifiedAt,
+      record.username,
+      record.bio,
+      record.phone,
+      record.avatarKey,
     );
   }
 }

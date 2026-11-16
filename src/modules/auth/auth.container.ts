@@ -5,7 +5,7 @@ import { RequireBearerAuthMiddleware } from '@/core/auth/require-bearer-auth.mid
 import { RequireVerifiedEmailMiddleware } from '@/core/auth/require-verified-email.middleware.js';
 import type { AppConfig } from '@/core/config/app.config.js';
 import { CORE_TYPES } from '@/core/container/core.types.js';
-import { AuthRateLimiter } from '@/core/http/middleware/rate-limit.js';
+import { AuthRateLimiter, ProfileRateLimiter } from '@/core/http/middleware/rate-limit.js';
 import { RequestScopeMiddleware } from '@/core/http/middleware/request-scope.js';
 import { AUTH_TYPES } from '@/modules/auth/auth.types.js';
 import { AesMfaSecretCipher } from '@/modules/auth/data/aes-mfa-secret.cipher.js';
@@ -43,6 +43,7 @@ import type { PasswordHasher } from '@/modules/auth/logic/ports/password.hasher.
 import type { PasswordResetRepository } from '@/modules/auth/logic/ports/password-reset.repository.js';
 import type { RefreshTokenRepository } from '@/modules/auth/logic/ports/refresh-token.repository.js';
 import type { UserRepository } from '@/modules/auth/logic/ports/user.repository.js';
+import { ProfileService } from '@/modules/auth/logic/profile.service.js';
 import { TokenService } from '@/modules/auth/logic/token.service.js';
 import { TotpService } from '@/modules/auth/logic/totp.service.js';
 import { AuthController } from '@/modules/auth/web/auth.controller.js';
@@ -59,6 +60,7 @@ import type { PassportProvider } from '@/modules/auth/web/passport/passport.prov
 import { PassportOAuthStateStore } from '@/modules/auth/web/passport/passport-oauth-state.store.js';
 import { TotpStrategyConfigurer } from '@/modules/auth/web/passport/totp.strategy.js';
 import { PasswordResetController } from '@/modules/auth/web/password-reset.controller.js';
+import { ProfileController } from '@/modules/auth/web/profile.controller.js';
 import { AuthRouter } from '@/modules/auth/web/routes/auth.router.js';
 import { OAuthRouter } from '@/modules/auth/web/routes/oauth.router.js';
 import { TokenController } from '@/modules/auth/web/token.controller.js';
@@ -75,6 +77,9 @@ export class AuthContainer extends Container {
       new RequestScopeMiddleware(this),
     );
     this.bind<AuthRateLimiter>(AUTH_TYPES.AuthRateLimiter).to(AuthRateLimiter).inSingletonScope();
+    this.bind<ProfileRateLimiter>(AUTH_TYPES.ProfileRateLimiter)
+      .to(ProfileRateLimiter)
+      .inSingletonScope();
 
     this.bind<UserRepository>(AUTH_TYPES.UserRepository)
       .to(PostgresUserRepository)
@@ -147,6 +152,7 @@ export class AuthContainer extends Container {
     this.bind<TotpService>(AUTH_TYPES.TotpService).to(TotpService).inSingletonScope();
     this.bind<MfaService>(AUTH_TYPES.MfaService).to(MfaService).inSingletonScope();
     this.bind<TokenService>(AUTH_TYPES.TokenService).to(TokenService).inSingletonScope();
+    this.bind<ProfileService>(AUTH_TYPES.ProfileService).to(ProfileService).inSingletonScope();
     this.bind<AuthPrincipalStore>(AUTH_TYPES.PrincipalStore)
       .to(AuthPrincipalStore)
       .inSingletonScope();
@@ -205,6 +211,7 @@ export class AuthContainer extends Container {
     );
     this.bind<MfaController>(AUTH_TYPES.MfaController).to(MfaController);
     this.bind<OAuthController>(AUTH_TYPES.OAuthController).to(OAuthController);
+    this.bind<ProfileController>(AUTH_TYPES.ProfileController).to(ProfileController);
 
     this.bind<OAuthRouter>(AUTH_TYPES.OAuthRouter).to(OAuthRouter).inSingletonScope();
     this.bind<AuthRouter>(AUTH_TYPES.AuthRouter).to(AuthRouter).inSingletonScope();

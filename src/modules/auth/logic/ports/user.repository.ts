@@ -7,10 +7,18 @@ export interface CreateUserInput {
   emailVerifiedAt?: Date | null;
 }
 
+export interface UpdateProfileInput {
+  displayName?: string | undefined;
+  username?: string | null | undefined;
+  bio?: string | null | undefined;
+  phone?: string | null | undefined;
+}
+
 export interface UserRepository {
   findById(id: string): Promise<UserRecord | null>;
   findByEmail(email: string): Promise<UserRecord | null>;
   create(input: CreateUserInput): Promise<UserRecord>;
+  updateProfile(id: string, input: UpdateProfileInput): Promise<UserRecord | null>;
   updateLoginFailure(
     id: string,
     attempts: number,
