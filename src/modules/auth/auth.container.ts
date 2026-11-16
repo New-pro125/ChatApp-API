@@ -49,6 +49,7 @@ import { AuthController } from '@/modules/auth/web/auth.controller.js';
 import { EmailVerificationController } from '@/modules/auth/web/email-verification.controller.js';
 import { MfaController } from '@/modules/auth/web/mfa.controller.js';
 import { OAuthController } from '@/modules/auth/web/oauth.controller.js';
+import { FacebookPassportProvider } from '@/modules/auth/web/passport/facebook.strategy.js';
 import { GitHubPassportProvider } from '@/modules/auth/web/passport/github.strategy.js';
 import { GooglePassportProvider } from '@/modules/auth/web/passport/google.strategy.js';
 import { LocalStrategyConfigurer } from '@/modules/auth/web/passport/local.strategy.js';
@@ -169,6 +170,12 @@ export class AuthContainer extends Container {
     if (config.google.enabled) {
       this.bind<PassportProvider>(AUTH_TYPES.OAuthProvider)
         .to(GooglePassportProvider)
+        .inSingletonScope();
+    }
+
+    if (config.facebook.enabled) {
+      this.bind<PassportProvider>(AUTH_TYPES.OAuthProvider)
+        .to(FacebookPassportProvider)
         .inSingletonScope();
     }
 

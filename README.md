@@ -190,18 +190,25 @@ the account, invalidating all existing sessions.
 
 ### OAuth2 and OIDC
 
-| Method | Path                              | Description        |
-| ------ | --------------------------------- | ------------------ |
-| `GET`  | `/api/auth/oauth/github`          | Start GitHub OAuth |
-| `GET`  | `/api/auth/oauth/github/callback` | GitHub callback    |
-| `GET`  | `/api/auth/oauth/google`          | Start Google OAuth |
-| `GET`  | `/api/auth/oauth/google/callback` | Google callback    |
-| `GET`  | `/api/auth/sso`                   | Start OIDC SSO     |
-| `GET`  | `/api/auth/sso/callback`          | OIDC callback      |
+| Method | Path                                | Description        |
+| ------ | ----------------------------------- | ------------------ |
+| `GET`  | `/api/auth/oauth/github`            | Start GitHub OAuth |
+| `GET`  | `/api/auth/oauth/github/callback`   | GitHub callback    |
+| `GET`  | `/api/auth/oauth/google`            | Start Google OAuth |
+| `GET`  | `/api/auth/oauth/google/callback`   | Google callback    |
+| `GET`  | `/api/auth/oauth/facebook`          | Start Meta OAuth   |
+| `GET`  | `/api/auth/oauth/facebook/callback` | Meta callback      |
+| `GET`  | `/api/auth/sso`                     | Start OIDC SSO     |
+| `GET`  | `/api/auth/sso/callback`            | OIDC callback      |
 
 A provider is enabled only when its client ID, secret, and callback URL are all
 set. OAuth accounts are linked to existing users by verified email; if no
 matching user exists, one is created. Unverified provider emails are rejected.
+
+Facebook does not expose a per-email verification flag in its profile, so an
+email returned by the Facebook Graph API is treated as verified. If the user
+declines the `email` permission, login fails rather than creating an account
+without an address.
 
 OAuth state is kept server-side in Redis behind an opaque httpOnly cookie, so
 PKCE code verifiers never reach the browser. JSON clients receive the token pair
@@ -270,9 +277,7 @@ Error:
   "error": {
     "code": "VALIDATION_ERROR",
     "message": "Invalid request",
-    "details": [
-      { "path": "email", "message": "Invalid email", "code": "invalid_format" }
-    ]
+    "details": [{ "path": "email", "message": "Invalid email", "code": "invalid_format" }]
   },
   "meta": {
     "requestId": "b4c1f4d2-..."
@@ -432,7 +437,7 @@ provisioning keeps working with any compatible endpoint.
 Source imports use `@/...`:
 
 ```ts
-import { AuthService } from "@/modules/auth/logic/auth.service.js";
+import { AuthService } from '@/modules/auth/logic/auth.service.js';
 ```
 
 - `tsx` resolves aliases during development.

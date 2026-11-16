@@ -285,6 +285,7 @@ export class AppConfig {
 
   readonly github: OAuthProviderConfig;
   readonly google: OAuthProviderConfig;
+  readonly facebook: OAuthProviderConfig;
   readonly sso: SsoConfig;
 
   readonly oauthSuccessRedirect: string;
@@ -405,6 +406,13 @@ export class AppConfig {
       env.readOptional('GOOGLE_CLIENT_ID'),
       env.readOptional('GOOGLE_CLIENT_SECRET'),
       env.readOptional('GOOGLE_CALLBACK_URL'),
+    );
+
+    this.facebook = new OAuthProviderConfig(
+      'facebook',
+      env.readOptional('FACEBOOK_CLIENT_ID'),
+      env.readOptional('FACEBOOK_CLIENT_SECRET'),
+      env.readOptional('FACEBOOK_CALLBACK_URL'),
     );
 
     this.sso = new SsoConfig(

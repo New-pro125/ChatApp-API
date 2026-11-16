@@ -7,7 +7,7 @@ before making changes, then read `README.md` for the public API and setup guide.
 
 - Node 24, TypeScript 7.0.2, ESM (`"type": "module"`)
 - Express 5 with Inversify 8 child containers
-- Passport local, GitHub, Google, and OIDC SSO strategies
+- Passport local, GitHub, Google, Facebook, and OIDC SSO strategies
 - PostgreSQL 18 through Drizzle ORM (`pg` driver; PgBouncer in production),
   Redis-backed rate limiting, token denylist, and OAuth state
 - EdDSA (Ed25519) access tokens with rotating single-use refresh tokens
