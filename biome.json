@@ -1,14 +1,7 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.6.6/schema.json",
   "files": {
-    "includes": [
-      "**",
-      "!dist",
-      "!node_modules",
-      "!coverage",
-      "!package-lock.json",
-      "!drizzle"
-    ]
+    "includes": ["**", "!dist", "!node_modules", "!coverage", "!package-lock.json", "!drizzle"]
   },
   "formatter": {
     "enabled": true,
@@ -115,12 +108,7 @@
       }
     },
     {
-      "includes": [
-        "scripts/**",
-        "drizzle.config.ts",
-        "vitest.config.ts",
-        "tests/**"
-      ],
+      "includes": ["scripts/**", "drizzle.config.ts", "vitest.config.ts", "tests/**"],
       "linter": {
         "rules": {
           "style": {
