@@ -19,6 +19,8 @@ import { PostgresOAuthAccountRepository } from '@/modules/auth/data/postgres-oau
 import { PostgresPasswordResetRepository } from '@/modules/auth/data/postgres-password-reset.repository.js';
 import { PostgresRefreshTokenRepository } from '@/modules/auth/data/postgres-refresh-token.repository.js';
 import { PostgresUserRepository } from '@/modules/auth/data/postgres-user.repository.js';
+import { PostgresUserBlockRepository } from '@/modules/auth/data/postgres-user-block.repository.js';
+import { PostgresUserPrivacyRepository } from '@/modules/auth/data/postgres-user-privacy.repository.js';
 import { RedisOAuthGrantStore } from '@/modules/auth/data/redis-oauth-grant.store.js';
 import { RedisOAuthStateStore } from '@/modules/auth/data/redis-oauth-state.store.js';
 import { TokenGenerator } from '@/modules/auth/data/token.generator.js';
@@ -26,6 +28,7 @@ import { TurnstileCaptchaVerifier } from '@/modules/auth/data/turnstile-captcha.
 import { AccountLockoutService } from '@/modules/auth/logic/account-lockout.service.js';
 import { AuthService } from '@/modules/auth/logic/auth.service.js';
 import { AuthPrincipalStore } from '@/modules/auth/logic/auth-principal.store.js';
+import { BlockService } from '@/modules/auth/logic/block.service.js';
 import { CaptchaService } from '@/modules/auth/logic/captcha.service.js';
 import { EmailVerificationService } from '@/modules/auth/logic/email-verification.service.js';
 import { MfaService } from '@/modules/auth/logic/mfa.service.js';
@@ -43,10 +46,14 @@ import type { PasswordHasher } from '@/modules/auth/logic/ports/password.hasher.
 import type { PasswordResetRepository } from '@/modules/auth/logic/ports/password-reset.repository.js';
 import type { RefreshTokenRepository } from '@/modules/auth/logic/ports/refresh-token.repository.js';
 import type { UserRepository } from '@/modules/auth/logic/ports/user.repository.js';
+import type { UserBlockRepository } from '@/modules/auth/logic/ports/user-block.repository.js';
+import type { UserPrivacyRepository } from '@/modules/auth/logic/ports/user-privacy.repository.js';
+import { PrivacyService } from '@/modules/auth/logic/privacy.service.js';
 import { ProfileService } from '@/modules/auth/logic/profile.service.js';
 import { TokenService } from '@/modules/auth/logic/token.service.js';
 import { TotpService } from '@/modules/auth/logic/totp.service.js';
 import { AuthController } from '@/modules/auth/web/auth.controller.js';
+import { BlockController } from '@/modules/auth/web/block.controller.js';
 import { EmailVerificationController } from '@/modules/auth/web/email-verification.controller.js';
 import { MfaController } from '@/modules/auth/web/mfa.controller.js';
 import { OAuthController } from '@/modules/auth/web/oauth.controller.js';
@@ -60,6 +67,7 @@ import type { PassportProvider } from '@/modules/auth/web/passport/passport.prov
 import { PassportOAuthStateStore } from '@/modules/auth/web/passport/passport-oauth-state.store.js';
 import { TotpStrategyConfigurer } from '@/modules/auth/web/passport/totp.strategy.js';
 import { PasswordResetController } from '@/modules/auth/web/password-reset.controller.js';
+import { PrivacyController } from '@/modules/auth/web/privacy.controller.js';
 import { ProfileController } from '@/modules/auth/web/profile.controller.js';
 import { AuthRouter } from '@/modules/auth/web/routes/auth.router.js';
 import { OAuthRouter } from '@/modules/auth/web/routes/oauth.router.js';
@@ -96,6 +104,12 @@ export class AuthContainer extends Container {
     this.bind<MfaRepository>(AUTH_TYPES.MfaRepository).to(PostgresMfaRepository).inSingletonScope();
     this.bind<RefreshTokenRepository>(AUTH_TYPES.RefreshTokenRepository)
       .to(PostgresRefreshTokenRepository)
+      .inSingletonScope();
+    this.bind<UserPrivacyRepository>(AUTH_TYPES.UserPrivacyRepository)
+      .to(PostgresUserPrivacyRepository)
+      .inSingletonScope();
+    this.bind<UserBlockRepository>(AUTH_TYPES.UserBlockRepository)
+      .to(PostgresUserBlockRepository)
       .inSingletonScope();
     this.bind<OAuthGrantStore>(AUTH_TYPES.OAuthGrantStore)
       .to(RedisOAuthGrantStore)
@@ -153,6 +167,8 @@ export class AuthContainer extends Container {
     this.bind<MfaService>(AUTH_TYPES.MfaService).to(MfaService).inSingletonScope();
     this.bind<TokenService>(AUTH_TYPES.TokenService).to(TokenService).inSingletonScope();
     this.bind<ProfileService>(AUTH_TYPES.ProfileService).to(ProfileService).inSingletonScope();
+    this.bind<PrivacyService>(AUTH_TYPES.PrivacyService).to(PrivacyService).inSingletonScope();
+    this.bind<BlockService>(AUTH_TYPES.BlockService).to(BlockService).inSingletonScope();
     this.bind<AuthPrincipalStore>(AUTH_TYPES.PrincipalStore)
       .to(AuthPrincipalStore)
       .inSingletonScope();
@@ -212,6 +228,8 @@ export class AuthContainer extends Container {
     this.bind<MfaController>(AUTH_TYPES.MfaController).to(MfaController);
     this.bind<OAuthController>(AUTH_TYPES.OAuthController).to(OAuthController);
     this.bind<ProfileController>(AUTH_TYPES.ProfileController).to(ProfileController);
+    this.bind<PrivacyController>(AUTH_TYPES.PrivacyController).to(PrivacyController);
+    this.bind<BlockController>(AUTH_TYPES.BlockController).to(BlockController);
 
     this.bind<OAuthRouter>(AUTH_TYPES.OAuthRouter).to(OAuthRouter).inSingletonScope();
     this.bind<AuthRouter>(AUTH_TYPES.AuthRouter).to(AuthRouter).inSingletonScope();

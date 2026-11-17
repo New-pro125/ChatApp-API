@@ -5,6 +5,8 @@ export const AUTH_TYPES = {
   EmailVerificationRepository: Symbol.for('Auth.EmailVerificationRepository'),
   MfaRepository: Symbol.for('Auth.MfaRepository'),
   RefreshTokenRepository: Symbol.for('Auth.RefreshTokenRepository'),
+  UserPrivacyRepository: Symbol.for('Auth.UserPrivacyRepository'),
+  UserBlockRepository: Symbol.for('Auth.UserBlockRepository'),
   OAuthGrantStore: Symbol.for('Auth.OAuthGrantStore'),
   OAuthStateStore: Symbol.for('Auth.OAuthStateStore'),
   PasswordHasher: Symbol.for('Auth.PasswordHasher'),
@@ -22,6 +24,8 @@ export const AUTH_TYPES = {
   TotpService: Symbol.for('Auth.TotpService'),
   TokenService: Symbol.for('Auth.TokenService'),
   ProfileService: Symbol.for('Auth.ProfileService'),
+  PrivacyService: Symbol.for('Auth.PrivacyService'),
+  BlockService: Symbol.for('Auth.BlockService'),
   PrincipalStore: Symbol.for('Auth.PrincipalStore'),
   TokenGenerator: Symbol.for('Auth.TokenGenerator'),
 
@@ -34,6 +38,8 @@ export const AUTH_TYPES = {
   MfaController: Symbol.for('Auth.MfaController'),
   OAuthController: Symbol.for('Auth.OAuthController'),
   ProfileController: Symbol.for('Auth.ProfileController'),
+  PrivacyController: Symbol.for('Auth.PrivacyController'),
+  BlockController: Symbol.for('Auth.BlockController'),
   OAuthRouter: Symbol.for('Auth.OAuthRouter'),
   AuthRouter: Symbol.for('Auth.AuthRouter'),
 

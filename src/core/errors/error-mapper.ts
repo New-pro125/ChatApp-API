@@ -18,6 +18,7 @@ export interface ErrorMapping {
 }
 
 const STATUS_BY_DOMAIN_CODE: Partial<Record<ErrorCode, number>> = {
+  [ErrorCode.VALIDATION_ERROR]: 400,
   [ErrorCode.UNAUTHORIZED]: 401,
   [ErrorCode.FORBIDDEN]: 403,
   [ErrorCode.NOT_FOUND]: 404,

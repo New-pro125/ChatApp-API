@@ -93,18 +93,23 @@ docs in a deployed environment. The runtime registry rejects duplicate
 
 ### Token authentication
 
-| Method   | Path                      | Description                                      |
-| -------- | ------------------------- | ------------------------------------------------ |
-| `POST`   | `/api/auth/register`      | Create a user and receive the initial token pair |
-| `POST`   | `/api/auth/login`         | Authenticate and receive a token pair            |
-| `POST`   | `/api/auth/token/refresh` | Rotate the refresh token and receive a new pair  |
-| `POST`   | `/api/auth/token/grant`   | Exchange an OAuth grant code for a token pair    |
-| `POST`   | `/api/auth/logout`        | Revoke the calling device's tokens               |
-| `POST`   | `/api/auth/logout-all`    | Revoke every device for the account              |
-| `GET`    | `/api/auth/me`            | Return the authenticated user                    |
-| `PATCH`  | `/api/auth/me`            | Update the authenticated user's profile          |
-| `GET`    | `/api/auth/sessions`      | List active refresh-token sessions               |
-| `DELETE` | `/api/auth/sessions/:id`  | Revoke one session                               |
+| Method   | Path                          | Description                                      |
+| -------- | ----------------------------- | ------------------------------------------------ |
+| `POST`   | `/api/auth/register`          | Create a user and receive the initial token pair |
+| `POST`   | `/api/auth/login`             | Authenticate and receive a token pair            |
+| `POST`   | `/api/auth/token/refresh`     | Rotate the refresh token and receive a new pair  |
+| `POST`   | `/api/auth/token/grant`       | Exchange an OAuth grant code for a token pair    |
+| `POST`   | `/api/auth/logout`            | Revoke the calling device's tokens               |
+| `POST`   | `/api/auth/logout-all`        | Revoke every device for the account              |
+| `GET`    | `/api/auth/me`                | Return the authenticated user                    |
+| `PATCH`  | `/api/auth/me`                | Update the authenticated user's profile          |
+| `GET`    | `/api/auth/me/privacy`        | Return the caller's privacy settings             |
+| `PATCH`  | `/api/auth/me/privacy`        | Update the caller's privacy settings             |
+| `GET`    | `/api/auth/me/blocks`         | List the users the caller has blocked            |
+| `POST`   | `/api/auth/me/blocks`         | Block a user                                     |
+| `DELETE` | `/api/auth/me/blocks/:userId` | Unblock a user                                   |
+| `GET`    | `/api/auth/sessions`          | List active refresh-token sessions               |
+| `DELETE` | `/api/auth/sessions/:id`      | Revoke one session                               |
 
 Successful authentication returns `{ user, tokens }` where `tokens` is
 `{ accessToken, refreshToken, tokenType, expiresIn, refreshExpiresAt }`.
@@ -142,6 +147,34 @@ value and `null` clears a nullable field. An empty payload is rejected with
 
 `phone` is informational and **not verified** yet; SMS verification and avatar
 uploads arrive in later phases, so treat the stored number as untrusted.
+
+### Privacy settings and blocking
+
+`GET /api/auth/me/privacy` returns the caller's privacy preferences. Accounts
+that have never changed them receive permissive defaults without a row being
+created; the first write creates one.
+
+| Field                    | Meaning                                                   | Default    |
+| ------------------------ | --------------------------------------------------------- | ---------- |
+| `profilePhotoVisibility` | Who may see the profile photo                             | `everyone` |
+| `lastSeenVisibility`     | Who may see the last-seen timestamp                       | `everyone` |
+| `storiesVisibility`      | Who may see stories                                       | `everyone` |
+| `readReceiptsEnabled`    | Whether read receipts are shared (mutual, Telegram-style) | `true`     |
+
+`PATCH /api/auth/me/privacy` accepts any subset of the fields; omitted settings
+keep their stored value and an empty payload is rejected with
+`400 VALIDATION_ERROR`. Visibility accepts `everyone` or `nobody` until the
+contact graph exists. These settings are **stored but not yet enforced**;
+messaging and search honor them in later phases.
+
+Blocking is directional and idempotent. `POST /api/auth/me/blocks` with
+`{ "userId": "..." }` returns `204`; repeating it is a no-op, blocking yourself
+returns `400 VALIDATION_ERROR`, and an unknown target returns `404 NOT_FOUND`.
+`GET /api/auth/me/blocks` returns the blocked users, newest first, with
+`id`, `username`, `displayName`, `avatarKey`, and `blockedAt`.
+`DELETE /api/auth/me/blocks/:userId` also returns `204` and is a no-op when the
+user is not blocked. Each side manages its own list, so a block does not appear
+in the other user's list.
 
 ### Two-factor authentication
 

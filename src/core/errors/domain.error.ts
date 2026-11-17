@@ -253,3 +253,11 @@ export class ProviderDisabledException extends DomainException {
     super(message, options);
   }
 }
+
+export class CannotBlockSelfException extends DomainException {
+  readonly code = ErrorCode.VALIDATION_ERROR;
+
+  constructor(message = 'You cannot block yourself', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}

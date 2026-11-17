@@ -8,10 +8,12 @@ import { DocumentedRouter } from '@/core/http/openapi/documented-router.js';
 import type { OpenApiRegistry } from '@/core/http/openapi/openapi.registry.js';
 import { AUTH_TYPES } from '@/modules/auth/auth.types.js';
 import type { AuthController } from '@/modules/auth/web/auth.controller.js';
+import type { BlockController } from '@/modules/auth/web/block.controller.js';
 import { authContracts, tokenContracts } from '@/modules/auth/web/dto/auth.openapi.js';
 import type { EmailVerificationController } from '@/modules/auth/web/email-verification.controller.js';
 import type { MfaController } from '@/modules/auth/web/mfa.controller.js';
 import type { PasswordResetController } from '@/modules/auth/web/password-reset.controller.js';
+import type { PrivacyController } from '@/modules/auth/web/privacy.controller.js';
 import type { ProfileController } from '@/modules/auth/web/profile.controller.js';
 import type { OAuthRouter } from '@/modules/auth/web/routes/oauth.router.js';
 import type { TokenController } from '@/modules/auth/web/token.controller.js';
@@ -101,6 +103,62 @@ export class AuthRouter {
         return req.container
           .get<ProfileController>(AUTH_TYPES.ProfileController)
           .update(req, res, next);
+      },
+    );
+
+    this.routes.get(
+      '/me/privacy',
+      authContracts.getPrivacy,
+      this.requireAuth.handle,
+      (req, res, next) => {
+        return req.container
+          .get<PrivacyController>(AUTH_TYPES.PrivacyController)
+          .get(req, res, next);
+      },
+    );
+
+    this.routes.patch(
+      '/me/privacy',
+      authContracts.updatePrivacy,
+      this.requireAuth.handle,
+      this.profileLimiter.handle,
+      (req, res, next) => {
+        return req.container
+          .get<PrivacyController>(AUTH_TYPES.PrivacyController)
+          .update(req, res, next);
+      },
+    );
+
+    this.routes.get(
+      '/me/blocks',
+      authContracts.listBlocks,
+      this.requireAuth.handle,
+      (req, res, next) => {
+        return req.container.get<BlockController>(AUTH_TYPES.BlockController).list(req, res, next);
+      },
+    );
+
+    this.routes.post(
+      '/me/blocks',
+      authContracts.createBlock,
+      this.requireAuth.handle,
+      this.profileLimiter.handle,
+      (req, res, next) => {
+        return req.container
+          .get<BlockController>(AUTH_TYPES.BlockController)
+          .create(req, res, next);
+      },
+    );
+
+    this.routes.delete(
+      '/me/blocks/:userId',
+      authContracts.deleteBlock,
+      this.requireAuth.handle,
+      this.profileLimiter.handle,
+      (req, res, next) => {
+        return req.container
+          .get<BlockController>(AUTH_TYPES.BlockController)
+          .remove(req, res, next);
       },
     );
 

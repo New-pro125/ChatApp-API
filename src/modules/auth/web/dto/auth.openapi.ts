@@ -22,6 +22,8 @@ import {
   verifyMfaSchema,
   verifyOtpSchema,
 } from '@/modules/auth/web/dto/auth.schemas.js';
+import { blockUserParamsSchema, blockUserSchema } from '@/modules/auth/web/dto/block.schemas.js';
+import { updatePrivacySchema } from '@/modules/auth/web/dto/privacy.schemas.js';
 import { updateProfileSchema } from '@/modules/auth/web/dto/profile.schemas.js';
 
 const bearerSecurity = [{ bearerAuth: [] }] as const;
@@ -110,6 +112,25 @@ export const resetTokenSchema = z
   })
   .meta({ id: 'PasswordResetToken' });
 
+export const privacySettingsSchema = z
+  .object({
+    profilePhotoVisibility: z.enum(['everyone', 'nobody']),
+    lastSeenVisibility: z.enum(['everyone', 'nobody']),
+    storiesVisibility: z.enum(['everyone', 'nobody']),
+    readReceiptsEnabled: z.boolean(),
+  })
+  .meta({ id: 'PrivacySettings' });
+
+export const blockedUserSchema = z
+  .object({
+    id: z.uuid(),
+    username: z.string().nullable(),
+    displayName: z.string(),
+    avatarKey: z.string().nullable(),
+    blockedAt: z.iso.datetime(),
+  })
+  .meta({ id: 'BlockedUser' });
+
 const userResponse = successEnvelope(authenticatedUserSchema, 'AuthenticatedUserResponse');
 const authenticationResponse = successEnvelope(
   authenticationResultSchema,
@@ -121,6 +142,8 @@ const recoveryCodesResponse = successEnvelope(recoveryCodesSchema, 'MfaRecoveryC
 const mfaStatusResponse = successEnvelope(mfaStatusSchema, 'MfaStatusResponse');
 const resetTokenResponse = successEnvelope(resetTokenSchema, 'PasswordResetTokenResponse');
 const sessionsResponse = successEnvelope(z.array(activeSessionSchema), 'ActiveSessionListResponse');
+const privacySettingsResponse = successEnvelope(privacySettingsSchema, 'PrivacySettingsResponse');
+const blockedUsersResponse = successEnvelope(z.array(blockedUserSchema), 'BlockedUserListResponse');
 const nullResponse = successEnvelope(z.null());
 
 const conflict = {
@@ -219,6 +242,66 @@ export const authContracts = {
       200: { description: 'Updated authenticated user', schema: userResponse },
       ...commonErrorResponses,
       409: conflict,
+    },
+  },
+  getPrivacy: {
+    operationId: 'auth.privacy.get',
+    tags: ['Privacy'],
+    summary: 'Return the authenticated user privacy settings',
+    description:
+      'Accounts that have never changed their settings receive permissive defaults without a row being created.',
+    security: bearerSecurity,
+    responses: {
+      200: { description: 'Privacy settings', schema: privacySettingsResponse },
+      ...commonErrorResponses,
+    },
+  },
+  updatePrivacy: {
+    operationId: 'auth.privacy.update',
+    tags: ['Privacy'],
+    summary: 'Update the authenticated user privacy settings',
+    description:
+      'Partial update: omitted settings keep their stored value and an empty payload is rejected. Visibility accepts "everyone" or "nobody" until the contact graph exists.',
+    security: bearerSecurity,
+    request: { body: updatePrivacySchema },
+    responses: {
+      200: { description: 'Updated privacy settings', schema: privacySettingsResponse },
+      ...commonErrorResponses,
+    },
+  },
+  listBlocks: {
+    operationId: 'auth.blocks.list',
+    tags: ['Privacy'],
+    summary: 'List the users the caller has blocked',
+    security: bearerSecurity,
+    responses: {
+      200: { description: 'Blocked users, newest first', schema: blockedUsersResponse },
+      ...commonErrorResponses,
+    },
+  },
+  createBlock: {
+    operationId: 'auth.blocks.create',
+    tags: ['Privacy'],
+    summary: 'Block a user',
+    description:
+      'Idempotent: blocking an already-blocked user still returns 204. Returns 404 when the target account does not exist and 400 when blocking yourself.',
+    security: bearerSecurity,
+    request: { body: blockUserSchema },
+    responses: {
+      204: noContentResponse,
+      ...commonErrorResponses,
+    },
+  },
+  deleteBlock: {
+    operationId: 'auth.blocks.delete',
+    tags: ['Privacy'],
+    summary: 'Unblock a user',
+    description: 'Idempotent: unblocking a user who is not blocked still returns 204.',
+    security: bearerSecurity,
+    request: { params: blockUserParamsSchema },
+    responses: {
+      204: noContentResponse,
+      ...commonErrorResponses,
     },
   },
   resendEmailVerification: {

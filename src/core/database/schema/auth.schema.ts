@@ -207,6 +207,72 @@ export const mfaRecoveryCodes = pgTable(
   ],
 );
 
+/**
+ * Per-user privacy preferences.
+ *
+ * Kept out of `users` because `PrincipalStore` loads that row on every
+ * authenticated request; these settings are only read when a feature needs to
+ * decide who may see something.
+ */
+export const userPrivacySettings = pgTable(
+  'user_privacy_settings',
+  {
+    userId: uuid('user_id')
+      .primaryKey()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    profilePhotoVisibility: text('profile_photo_visibility').notNull().default('everyone'),
+    lastSeenVisibility: text('last_seen_visibility').notNull().default('everyone'),
+    storiesVisibility: text('stories_visibility').notNull().default('everyone'),
+    readReceiptsEnabled: boolean('read_receipts_enabled').notNull().default(true),
+    ...timestamps,
+  },
+  (table) => [
+    check(
+      'user_privacy_settings_profile_photo_visibility_check',
+      sql`${table.profilePhotoVisibility} in ('everyone', 'nobody')`,
+    ),
+    check(
+      'user_privacy_settings_last_seen_visibility_check',
+      sql`${table.lastSeenVisibility} in ('everyone', 'nobody')`,
+    ),
+    check(
+      'user_privacy_settings_stories_visibility_check',
+      sql`${table.storiesVisibility} in ('everyone', 'nobody')`,
+    ),
+  ],
+);
+
+/**
+ * Directional block edges.
+ *
+ * A row means `blocker` has blocked `blocked`. Mutual effects (messaging,
+ * visibility) are enforced by the consuming features; storage stays
+ * directional so either side can block independently.
+ */
+export const userBlocks = pgTable(
+  'user_blocks',
+  {
+    id: uuid('id').primaryKey().default(sql`uuidv7()`),
+    blockerId: uuid('blocker_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    blockedId: uuid('blocked_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('user_blocks_blocker_blocked_unique').on(table.blockerId, table.blockedId),
+    index('user_blocks_blocker_created_at_index').on(
+      table.blockerId,
+      table.createdAt.desc(),
+      table.id,
+    ),
+    index('user_blocks_blocked_id_index').on(table.blockedId),
+    check('user_blocks_no_self_block', sql`${table.blockerId} <> ${table.blockedId}`),
+  ],
+);
+
 export const emailVerificationCodes = pgTable(
   'email_verification_codes',
   {
