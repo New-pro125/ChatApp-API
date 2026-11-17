@@ -11,6 +11,7 @@ export const CORE_TYPES = {
   AccessTokenService: Symbol.for('Core.AccessTokenService'),
   AuthDenylist: Symbol.for('Core.AuthDenylist'),
   PrincipalStore: Symbol.for('Core.PrincipalStore'),
+  UserPrivacyReader: Symbol.for('Core.UserPrivacyReader'),
   RequireAuth: Symbol.for('Core.RequireAuth'),
   RequireVerifiedEmail: Symbol.for('Core.RequireVerifiedEmail'),
 

@@ -164,8 +164,9 @@ created; the first write creates one.
 `PATCH /api/auth/me/privacy` accepts any subset of the fields; omitted settings
 keep their stored value and an empty payload is rejected with
 `400 VALIDATION_ERROR`. Visibility accepts `everyone` or `nobody` until the
-contact graph exists. These settings are **stored but not yet enforced**;
-messaging and search honor them in later phases.
+contact graph exists. `storiesVisibility` is enforced by the stories endpoints
+below; the remaining settings are **stored but not yet enforced** and are
+honored by messaging and search in later phases.
 
 Blocking is directional and idempotent. `POST /api/auth/me/blocks` with
 `{ "userId": "..." }` returns `204`; repeating it is a no-op, blocking yourself
@@ -175,6 +176,34 @@ returns `400 VALIDATION_ERROR`, and an unknown target returns `404 NOT_FOUND`.
 `DELETE /api/auth/me/blocks/:userId` also returns `204` and is a no-op when the
 user is not blocked. Each side manages its own list, so a block does not appear
 in the other user's list.
+
+### Stories
+
+Stories are short-lived posts owned by a user and served by the dedicated
+`stories` module. A story carries a caption, a media object key, or both, and
+expires after `STORY_TTL_SECONDS` (24 hours by default). Expired stories are
+filtered out of every read; there is no background cleanup job yet.
+
+| Method   | Path                         | Description                                    |
+| -------- | ---------------------------- | ---------------------------------------------- |
+| `POST`   | `/api/stories`               | Create a story                                 |
+| `GET`    | `/api/stories`               | List the caller's active stories, newest first |
+| `GET`    | `/api/stories/users/:userId` | List another user's active stories             |
+| `DELETE` | `/api/stories/:id`           | Delete one of the caller's stories             |
+
+`POST /api/stories` accepts `{ "caption": "..." }`, `{ "mediaKey": "..." }`, or
+both; an empty body returns `400 VALIDATION_ERROR`. Creation requires a verified
+email (`403 EMAIL_NOT_VERIFIED` otherwise) and is rate limited by the
+`rl:stories:` bucket (30 requests per 15 minutes). `mediaKey` is validated as a
+safe object key but is currently supplied by the client: the media pipeline
+(Phase 2.4) will replace this with server-generated keys and presigned uploads,
+and no route serves the object yet.
+
+Reading another user's stories honors their `storiesVisibility` setting. When it
+is `nobody` the response is an empty list rather than `403`, so the setting is
+not leaked; an unknown user also returns an empty list. `DELETE /api/stories/:id`
+returns `204` for an owned story and `404` when the story is missing or belongs
+to someone else.
 
 ### Two-factor authentication
 
@@ -375,7 +404,8 @@ instances that use the same Redis database. The auth routes allow 20 requests
 per 15 minutes per client IP, and profile updates use a separate `rl:profile:`
 bucket (30 requests per 15 minutes) so editing a profile never consumes the
 login or registration quota. Redis store errors are treated as server errors
-rather than silently allowing requests.
+rather than silently allowing requests. Story creation uses its own `rl:stories:`
+bucket (30 requests per 15 minutes).
 
 ## Account lockout
 
@@ -426,8 +456,8 @@ and `METRICS_TOKEN` control the Prometheus endpoint. The `HTTP_*`, `TRUST_PROXY`
 `APP_ORIGINS`, and `HEALTH_CACHE_TTL_MS` variables tune server timeouts, proxy
 trust, the CORS allowlist, and readiness caching. `SMTP_TIMEOUT_MS` bounds SMTP
 connection, greeting, and socket waits. See `.env.example` for the full list of
-database pool, HTTP hardening, auth hardening, OTP, email verification, captcha,
-MFA, SMTP, OAuth, SSO, and Docker Compose options.
+database pool, HTTP hardening, auth hardening, OTP, email verification, stories,
+captcha, MFA, SMTP, OAuth, SSO, and Docker Compose options.
 
 ## Scripts
 

@@ -7,6 +7,7 @@ import type { AppConfig } from '@/core/config/app.config.js';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import { AuthRateLimiter, ProfileRateLimiter } from '@/core/http/middleware/rate-limit.js';
 import { RequestScopeMiddleware } from '@/core/http/middleware/request-scope.js';
+import type { UserPrivacyReader } from '@/core/privacy/user-privacy.reader.js';
 import { AUTH_TYPES } from '@/modules/auth/auth.types.js';
 import { AesMfaSecretCipher } from '@/modules/auth/data/aes-mfa-secret.cipher.js';
 import { Argon2PasswordHasher } from '@/modules/auth/data/argon2-password.hasher.js';
@@ -251,8 +252,10 @@ export class AuthContainer extends Container {
       this.get(CORE_TYPES.AuthDenylist),
       principalStore,
     );
+    const privacyReader = this.get<PrivacyService>(AUTH_TYPES.PrivacyService);
 
     this.root.bind<PrincipalStore>(CORE_TYPES.PrincipalStore).toConstantValue(principalStore);
+    this.root.bind<UserPrivacyReader>(CORE_TYPES.UserPrivacyReader).toConstantValue(privacyReader);
     this.root.bind<RequireBearerAuthMiddleware>(CORE_TYPES.RequireAuth).toConstantValue(middleware);
     this.root
       .bind<RequireVerifiedEmailMiddleware>(CORE_TYPES.RequireVerifiedEmail)

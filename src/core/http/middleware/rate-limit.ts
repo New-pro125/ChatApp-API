@@ -80,3 +80,15 @@ export class ProfileRateLimiter extends RedisRateLimiter {
     });
   }
 }
+
+@injectable()
+export class StoryRateLimiter extends RedisRateLimiter {
+  constructor(@inject(CORE_TYPES.RedisClient) client: RedisClient) {
+    super(client, {
+      windowMs: FIFTEEN_MINUTES_MS,
+      limit: 30,
+      prefix: 'rl:stories:',
+      message: 'Too many story updates. Try again later.',
+    });
+  }
+}

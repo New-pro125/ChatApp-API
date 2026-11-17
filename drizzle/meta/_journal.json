@@ -43,6 +43,13 @@
       "when": 1794815904468,
       "tag": "0005_mature_corsair",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794896796702,
+      "tag": "0006_panoramic_menace",
+      "breakpoints": true
     }
   ]
 }

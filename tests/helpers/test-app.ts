@@ -40,6 +40,7 @@ export class TestApp {
         oauth_accounts,
         password_reset_codes,
         refresh_tokens,
+        stories,
         user_blocks,
         user_privacy_settings,
         users

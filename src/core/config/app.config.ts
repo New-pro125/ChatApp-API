@@ -103,6 +103,14 @@ export class EmailVerificationConfig {
   }
 }
 
+export class StoryConfig {
+  constructor(readonly ttlSeconds: number) {
+    if (!Number.isInteger(this.ttlSeconds) || this.ttlSeconds <= 0) {
+      throw new Error('STORY_TTL_SECONDS must be a positive integer');
+    }
+  }
+}
+
 export class CaptchaConfig {
   constructor(
     readonly enabled: boolean,
@@ -279,6 +287,7 @@ export class AppConfig {
   readonly lockout: LockoutConfig;
   readonly otp: OtpConfig;
   readonly verification: EmailVerificationConfig;
+  readonly stories: StoryConfig;
   readonly captcha: CaptchaConfig;
   readonly mfa: MfaConfig;
   readonly smtp: SmtpConfig;
@@ -358,6 +367,8 @@ export class AppConfig {
       env.readNumber('EMAIL_VERIFICATION_MAX_ATTEMPTS', 5),
       env.readNumber('EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS', 60),
     );
+
+    this.stories = new StoryConfig(env.readNumber('STORY_TTL_SECONDS', 86_400));
 
     this.captcha = new CaptchaConfig(
       env.readBoolean('CAPTCHA_ENABLED', false),

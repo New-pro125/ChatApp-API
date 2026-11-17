@@ -19,6 +19,7 @@ import type { MetricsService } from '@/core/metrics/metrics.service.js';
 import type { AppModule } from '@/core/modules/app.module.js';
 import { AuthModule } from '@/modules/auth/auth.module.js';
 import { HealthModule } from '@/modules/health/health.module.js';
+import { StoriesModule } from '@/modules/stories/stories.module.js';
 
 export class Application {
   private readonly app: Express;
@@ -84,7 +85,11 @@ export class Application {
 
     this.app.use(passport.initialize());
 
-    this.modules = [new HealthModule(container), new AuthModule(container, config)];
+    this.modules = [
+      new HealthModule(container),
+      new AuthModule(container, config),
+      new StoriesModule(container),
+    ];
 
     if (config.docsEnabled) {
       const documents = container.get<ApiDocumentBuilder>(CORE_TYPES.ApiDocumentBuilder);
