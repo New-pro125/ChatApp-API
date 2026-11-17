@@ -1,0 +1,16 @@
+import type {
+  ChatMemberRecord,
+  ChatMemberRole,
+} from '@/modules/messages/logic/entities/chat-member-record.js';
+
+export interface ChatMemberRepository {
+  add(chatId: string, userId: string, role?: ChatMemberRole): Promise<ChatMemberRecord>;
+
+  find(chatId: string, userId: string): Promise<ChatMemberRecord | null>;
+
+  /** Members of a chat, oldest membership first. */
+  listByChat(chatId: string): Promise<ChatMemberRecord[]>;
+
+  /** Returns whether a membership row was removed. */
+  remove(chatId: string, userId: string): Promise<boolean>;
+}
