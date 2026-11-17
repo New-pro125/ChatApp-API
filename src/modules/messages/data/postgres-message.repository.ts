@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, lt } from 'drizzle-orm';
 import { inject, injectable } from 'inversify';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import type { AppDatabase } from '@/core/database/database.provider.js';
@@ -16,9 +16,9 @@ import type {
  * PostgreSQL persistence for messages.
  *
  * Every query filters by `chat_id` because the table is hash partitioned by it:
- * the partition key is part of the primary key and leads every index, so a
- * lookup without it cannot prune partitions. History uses keyset pagination on
- * `(created_at, id)`, matching the `(chat_id, created_at desc, id desc)` index.
+ * the partition key is part of the primary key, so a lookup without it cannot
+ * prune partitions. History keysets on `id` (uuidv7, newest-first), which the
+ * `(chat_id, id)` primary key serves directly.
  */
 @injectable()
 export class PostgresMessageRepository implements MessageRepository {
@@ -75,17 +75,15 @@ export class PostgresMessageRepository implements MessageRepository {
     try {
       const conditions = [eq(messages.chatId, chatId)];
 
-      if (query.before) {
-        conditions.push(
-          sql`(${messages.createdAt}, ${messages.id}) < (${query.before.createdAt}, ${query.before.id})`,
-        );
+      if (query.beforeId) {
+        conditions.push(lt(messages.id, query.beforeId));
       }
 
       const rows = await this.db
         .select(messageSelection)
         .from(messages)
         .where(and(...conditions))
-        .orderBy(desc(messages.createdAt), desc(messages.id))
+        .orderBy(desc(messages.id))
         .limit(query.limit);
 
       return rows.map((row) => this.mapper.toRecord(row));

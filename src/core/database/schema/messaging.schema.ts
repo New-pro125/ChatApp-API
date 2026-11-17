@@ -28,7 +28,9 @@ import { users } from '@/core/database/schema/auth.schema.js';
  * `ALTER TABLE` statements that PostgreSQL propagates to every partition.
  *
  * Because the primary key is `(chat_id, id)`, a message id is only unique
- * within its chat — every index on `messages` must lead with `chat_id`.
+ * within its chat and every lookup must filter by `chat_id` so the planner can
+ * prune partitions. History keysets on `id` (uuidv7, newest-first), which the
+ * primary key serves directly. Non-unique indexes may target any column.
  */
 export const chats = pgTable(
   'chats',
@@ -105,10 +107,8 @@ export const messages = pgTable(
       sql`${table.body} is null or char_length(${table.body}) between 1 and 4096`,
     ),
     check('messages_text_body_check', sql`${table.type} <> 'text' or ${table.body} is not null`),
-    index('messages_chat_id_created_at_index').on(
-      table.chatId,
-      table.createdAt.desc(),
-      table.id.desc(),
-    ),
+    // Non-unique, so it may omit the partition key. Keeps the `sender_id`
+    // RESTRICT foreign key check from scanning all sixteen partitions.
+    index('messages_sender_id_index').on(table.senderId),
   ],
 );

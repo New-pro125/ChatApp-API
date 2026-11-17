@@ -8,6 +8,36 @@ import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 import { AuthFixture } from '../../fixtures/auth.fixture.js';
 import { TestApp } from '../../helpers/test-app.js';
 
+/** Pages a chat's whole history, newest-first, following the id cursor. */
+async function collectAllMessageIds(
+  repository: MessageRepository,
+  chatId: string,
+  pageSize: number,
+): Promise<string[]> {
+  const collected: string[] = [];
+  let cursor: string | undefined;
+
+  for (;;) {
+    const page = await repository.listByChat(chatId, {
+      limit: pageSize,
+      ...(cursor === undefined ? {} : { beforeId: cursor }),
+    });
+    collected.push(...page.map((message) => message.id));
+
+    if (page.length < pageSize) {
+      return collected;
+    }
+
+    const last = page[page.length - 1];
+
+    if (last === undefined) {
+      return collected;
+    }
+
+    cursor = last.id;
+  }
+}
+
 describe('Messaging repositories', () => {
   let app: TestApp;
   let auth: AuthFixture;
@@ -177,9 +207,57 @@ describe('Messaging repositories', () => {
     }
     const secondPage = await messages.listByChat(chatId, {
       limit: 2,
-      before: { createdAt: cursor.createdAt, id: cursor.id },
+      beforeId: cursor.id,
     });
     expect(secondPage.map((message) => message.id)).toEqual([ids[2], ids[1]]);
+  });
+
+  it('cannot read or mutate a message through the wrong chat', async () => {
+    const owner = await auth.createUser();
+    const firstChat = await createGroupChat(owner.id);
+    const secondChat = await createGroupChat(owner.id);
+    const message = await messages.create({
+      chatId: firstChat,
+      senderId: owner.id,
+      body: 'private',
+    });
+
+    expect(await messages.findById(secondChat, message.id)).toBeNull();
+    expect(await messages.editBody(secondChat, message.id, 'hijacked', new Date())).toBeNull();
+    expect(await messages.markDeleted(secondChat, message.id, new Date())).toBe(false);
+
+    const untouched = await messages.findById(firstChat, message.id);
+    expect(untouched?.body).toBe('private');
+    expect(untouched?.deletedAt).toBeNull();
+  });
+
+  it('returns every message when several share a millisecond', async () => {
+    const owner = await auth.createUser();
+    const chatId = await createGroupChat(owner.id);
+    const inserted: string[] = [];
+
+    // Six messages inside the same millisecond, at distinct microseconds. A
+    // millisecond-precision cursor truncates those microseconds and skips rows.
+    for (let index = 0; index < 6; index += 1) {
+      const micros = 100000 + index * 130;
+      const result = await app.pool.query<{ id: string }>(
+        `INSERT INTO messages (chat_id, sender_id, body, created_at)
+         VALUES ($1, $2, $3, $4::timestamptz) RETURNING id`,
+        [chatId, owner.id, `m${index}`, `2026-01-01T00:00:00.${micros}Z`],
+      );
+      const row = result.rows[0];
+
+      if (!row) {
+        throw new Error('Insert did not return a message id');
+      }
+
+      inserted.push(row.id);
+    }
+
+    const collected = await collectAllMessageIds(messages, chatId, 2);
+
+    expect(new Set(collected).size).toBe(inserted.length);
+    expect([...collected].sort()).toEqual([...inserted].sort());
   });
 
   it('updates a message body and stamps editedAt', async () => {

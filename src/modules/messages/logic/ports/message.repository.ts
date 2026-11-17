@@ -14,15 +14,20 @@ export interface CreateMessageInput {
   forwardedFromMessageId?: string | null;
 }
 
-/** Keyset cursor over `(createdAt, id)`, newest-first. */
-export interface MessageCursor {
-  createdAt: Date;
-  id: string;
-}
-
+/**
+ * A page request for a chat's history.
+ *
+ * Pagination keysets on the message id alone. Ids are uuidv7 (time-ordered), so
+ * `id` ordering is newest-first, and the `(chat_id, id)` primary key serves the
+ * query without a timestamp cursor. A `Date` cursor cannot be used here: the
+ * database stores `created_at` at microsecond precision while JavaScript `Date`
+ * only holds milliseconds, so a timestamp cursor silently skips rows that share
+ * a millisecond.
+ */
 export interface ListMessagesQuery {
   limit: number;
-  before?: MessageCursor;
+  /** Return messages strictly older than this message id. */
+  beforeId?: string;
 }
 
 export interface MessageRepository {
