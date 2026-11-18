@@ -1,5 +1,6 @@
 import { connect, type Socket } from 'node:net';
 import type { Readable } from 'node:stream';
+import { StringDecoder } from 'node:string_decoder';
 import { inject, injectable } from 'inversify';
 import type { AppConfig } from '@/core/config/app.config.js';
 import { CORE_TYPES } from '@/core/container/core.types.js';
@@ -21,29 +22,63 @@ export class ClamAvVirusScanner implements VirusScanner {
 
     return new Promise<ScanResult>((resolve, reject) => {
       const socket: Socket = connect({ host, port });
+      const decoder = new StringDecoder('utf8');
       let response = '';
       let settled = false;
+      let socketReady = false;
+      let streamEnded = stream.readableEnded;
+      let terminatorSent = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+
+      const onDrain = (): void => {
+        if (!settled) {
+          stream.resume();
+        }
+      };
+
+      // Single terminal path: clear the wall-clock timer and detach backpressure state.
+      const cleanup = (): boolean => {
+        if (settled) {
+          return false;
+        }
+        settled = true;
+        if (timer) {
+          clearTimeout(timer);
+        }
+        socket.off('drain', onDrain);
+        stream.destroy();
+        socket.destroy();
+        return true;
+      };
 
       // Fail closed with a sanitized error; never propagate raw socket or protocol text.
       const fail = (): void => {
-        if (settled) {
-          return;
+        if (cleanup()) {
+          reject(new VirusScannerException('Virus scan failed'));
         }
-        settled = true;
-        stream.destroy();
-        socket.destroy();
-        reject(new VirusScannerException('Virus scan failed'));
       };
 
       const succeed = (result: ScanResult): void => {
-        if (settled) {
+        if (cleanup()) {
+          resolve(result);
+        }
+      };
+
+      const writeTerminator = (): void => {
+        if (settled || !socketReady || terminatorSent) {
           return;
         }
-        settled = true;
-        stream.destroy();
-        socket.destroy();
-        resolve(result);
+        terminatorSent = true;
+        socket.write(this.protocol.terminator(), (terminatorError) => {
+          if (terminatorError) {
+            fail();
+          }
+        });
       };
+
+      // Inactivity timeouts can be reset by a daemon that keeps trickling bytes, so bound the
+      // whole exchange with a wall-clock deadline as well.
+      timer = setTimeout(() => fail(), timeoutMs);
 
       socket.setTimeout(timeoutMs, () => fail());
       socket.once('error', () => fail());
@@ -52,12 +87,15 @@ export class ClamAvVirusScanner implements VirusScanner {
           fail();
         }
       });
-
+      socket.on('drain', onDrain);
       socket.on('data', (chunk: Buffer) => {
-        response += chunk.toString('utf8');
+        if (settled) {
+          return;
+        }
+        response += decoder.write(chunk);
 
         // Check framing before normalization so the trailing newline is still detected.
-        if (!response.includes('\n') || settled) {
+        if (!response.includes('\n')) {
           return;
         }
 
@@ -69,6 +107,23 @@ export class ClamAvVirusScanner implements VirusScanner {
         }
       });
 
+      // Listeners are attached before connect so an early source error cannot be uncaught, and the
+      // stream stays paused until the protocol prefix has been written.
+      stream.on('data', (chunk: Buffer) => {
+        if (settled || !socketReady) {
+          return;
+        }
+        if (!socket.write(this.protocol.frame(chunk))) {
+          stream.pause();
+        }
+      });
+      stream.once('error', () => fail());
+      stream.once('end', () => {
+        streamEnded = true;
+        writeTerminator();
+      });
+      stream.pause();
+
       socket.once('connect', () => {
         socket.write('zINSTREAM\n', (writeError) => {
           if (writeError) {
@@ -76,17 +131,12 @@ export class ClamAvVirusScanner implements VirusScanner {
             return;
           }
 
-          stream.on('data', (chunk: Buffer) => {
-            socket.write(this.protocol.frame(chunk));
-          });
-          stream.once('error', () => fail());
-          stream.once('end', () => {
-            socket.write(this.protocol.terminator(), (terminatorError) => {
-              if (terminatorError) {
-                fail();
-              }
-            });
-          });
+          socketReady = true;
+          if (streamEnded) {
+            writeTerminator();
+            return;
+          }
+          stream.resume();
         });
       });
     });
