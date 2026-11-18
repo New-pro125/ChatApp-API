@@ -9,6 +9,8 @@ import type { ClamAvProtocol } from '@/modules/media/logic/clamav-protocol.js';
 import type { ScanResult, VirusScanner } from '@/modules/media/logic/ports/virus-scanner.js';
 import { MEDIA_TYPES } from '@/modules/media/media.types.js';
 
+const INSTREAM_COMMAND = 'zINSTREAM\0';
+
 /** Streams objects to clamd using the INSTREAM protocol with a hard timeout. */
 @injectable()
 export class ClamAvVirusScanner implements VirusScanner {
@@ -94,14 +96,16 @@ export class ClamAvVirusScanner implements VirusScanner {
         }
         response += decoder.write(chunk);
 
-        // Check framing before normalization so the trailing newline is still detected.
-        if (!response.includes('\n')) {
+        // clamd terminates replies with NUL, not a newline.
+        const terminatorIndex = response.indexOf('\0');
+        if (terminatorIndex === -1) {
           return;
         }
 
         try {
-          const normalized = response.replace(/\p{Cc}/gu, ' ');
-          succeed(this.protocol.parseResponse(normalized));
+          // Normalize control characters in the body while keeping the NUL reply delimiter.
+          const body = response.slice(0, terminatorIndex).replace(/\p{Cc}/gu, ' ');
+          succeed(this.protocol.parseResponse(`${body}\0`));
         } catch {
           fail();
         }
@@ -125,7 +129,8 @@ export class ClamAvVirusScanner implements VirusScanner {
       stream.pause();
 
       socket.once('connect', () => {
-        socket.write('zINSTREAM\n', (writeError) => {
+        // z-prefixed clamd commands must be NUL-terminated; '\n' makes clamd wait forever.
+        socket.write(INSTREAM_COMMAND, (writeError) => {
           if (writeError) {
             fail();
             return;

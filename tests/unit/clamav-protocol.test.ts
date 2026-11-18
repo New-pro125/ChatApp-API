@@ -12,22 +12,35 @@ describe('ClamAvProtocol', () => {
     expect(protocol.terminator()).toEqual(Buffer.alloc(4));
   });
 
-  it('parses clamd stream replies', () => {
-    expect(protocol.parseResponse('1: OK\n')).toEqual({ verdict: 'clean' });
-    expect(protocol.parseResponse('OK')).toEqual({ verdict: 'clean' });
-    expect(protocol.parseResponse('1: FOUND Eicar-Test-Signature\n')).toEqual({
+  it('parses NUL-terminated clamd stream replies', () => {
+    expect(protocol.parseResponse('stream: OK\0')).toEqual({ verdict: 'clean' });
+    expect(protocol.parseResponse('stream: Eicar-Test-Signature FOUND\0')).toEqual({
       verdict: 'infected',
       signature: 'Eicar-Test-Signature',
+    });
+    expect(protocol.parseResponse('stream: Phishing.URL (Heuristic Variant) FOUND\0')).toEqual({
+      verdict: 'infected',
+      signature: 'Phishing.URL (Heuristic Variant)',
     });
   });
 
   it('truncates hostile signatures and rejects malformed responses', () => {
-    const long = protocol.parseResponse(`FOUND ${'x'.repeat(900)}`);
+    const long = protocol.parseResponse(`stream: ${'x'.repeat(900)} FOUND\0`);
     expect(long).toMatchObject({ verdict: 'infected' });
     if (long.verdict === 'infected') {
       expect(long.signature).toHaveLength(512);
     }
-    expect(() => protocol.parseResponse('ERROR broken')).toThrow(VirusScannerException);
-    expect(() => protocol.parseResponse('FOUND')).toThrow(VirusScannerException);
+
+    for (const malformed of [
+      'OK',
+      'OK\0',
+      'stream: OK',
+      'stream: OK\n',
+      '1: OK\0',
+      'ERROR broken\0',
+      'stream: FOUND\0',
+    ]) {
+      expect(() => protocol.parseResponse(malformed)).toThrow(VirusScannerException);
+    }
   });
 });

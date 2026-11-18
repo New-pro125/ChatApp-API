@@ -19,17 +19,28 @@ export class ClamAvProtocol {
   }
 
   parseResponse(response: string): ScanResult {
-    const text = response.replace(/^\d+:\s*/, '').trim();
+    const prefix = 'stream: ';
+    const foundSuffix = ' FOUND';
 
-    if (text === 'OK') {
+    if (!response.endsWith('\0')) {
+      throw new VirusScannerException('Unexpected ClamAV response');
+    }
+
+    const text = response.slice(0, -1);
+    if (!text.startsWith(prefix)) {
+      throw new VirusScannerException('Unexpected ClamAV response');
+    }
+
+    const verdict = text.slice(prefix.length);
+    if (verdict === 'OK') {
       return { verdict: 'clean' };
     }
 
-    if (text.startsWith('FOUND')) {
-      const signature = text.slice('FOUND'.length).trim().slice(0, MAX_SIGNATURE_LENGTH);
+    if (verdict.endsWith(foundSuffix)) {
+      const signature = verdict.slice(0, -foundSuffix.length);
 
       if (signature.length > 0) {
-        return { verdict: 'infected', signature };
+        return { verdict: 'infected', signature: signature.slice(0, MAX_SIGNATURE_LENGTH) };
       }
     }
 

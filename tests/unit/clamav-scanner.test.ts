@@ -7,6 +7,9 @@ import { VirusScannerException } from '@/core/errors/repository.error.js';
 import { ClamAvVirusScanner } from '@/modules/media/data/clamav-virus.scanner.js';
 import { ClamAvProtocol } from '@/modules/media/logic/clamav-protocol.js';
 
+const COMMAND = Buffer.from('zINSTREAM\0');
+const CLEAN_REPLY = 'stream: OK\0';
+
 let server: Server | undefined;
 const sockets = new Set<Socket>();
 
@@ -26,14 +29,56 @@ afterEach(async () => {
   server = undefined;
 });
 
+const hasCommandPrefix = (bytes: Buffer): boolean =>
+  bytes.length >= COMMAND.length && bytes.subarray(0, COMMAND.length).equals(COMMAND);
+
+/** Accepts only a NUL-terminated command and framed chunks ending in a zero-length chunk. */
+const collectFrames = (onComplete: (payload: Buffer) => void): ((chunk: Buffer) => void) => {
+  let pending = Buffer.alloc(0);
+  let commandSeen = false;
+  let completed = false;
+  const frames: Buffer[] = [];
+
+  return (chunk: Buffer) => {
+    if (completed) {
+      return;
+    }
+    pending = Buffer.concat([pending, chunk]);
+    if (!commandSeen) {
+      if (!hasCommandPrefix(pending)) {
+        return;
+      }
+      pending = pending.subarray(COMMAND.length);
+      commandSeen = true;
+    }
+
+    while (pending.length >= 4) {
+      const length = pending.readUInt32BE(0);
+      if (length === 0) {
+        completed = true;
+        onComplete(Buffer.concat(frames));
+        return;
+      }
+      if (pending.length < 4 + length) {
+        return;
+      }
+      frames.push(Buffer.from(pending.subarray(4, 4 + length)));
+      pending = pending.subarray(4 + length);
+    }
+  };
+};
+
 const startServer = async (reply: string | null): Promise<number> => {
   server = createServer((socket) => {
     trackSocket(socket);
-    socket.once('data', () => {
-      if (reply !== null) {
-        socket.write(reply);
-      }
-    });
+    socket.on(
+      'data',
+      collectFrames(() => {
+        if (reply !== null) {
+          socket.write(reply);
+        }
+      }),
+    );
   });
   await new Promise<void>((resolve) => server?.listen(0, '127.0.0.1', resolve));
   const address = server.address() as AddressInfo;
@@ -46,7 +91,9 @@ const scannerFor = (port: number, timeoutMs = 1000): ClamAvVirusScanner =>
     new ClamAvProtocol(),
   );
 
-const startProtocolServer = async (): Promise<{ port: number; received: Promise<Buffer> }> => {
+const startProtocolServer = async (
+  reply: string = CLEAN_REPLY,
+): Promise<{ port: number; received: Promise<Buffer> }> => {
   let resolveReceived: ((bytes: Buffer) => void) | undefined;
   const received = new Promise<Buffer>((resolve) => {
     resolveReceived = resolve;
@@ -55,19 +102,13 @@ const startProtocolServer = async (): Promise<{ port: number; received: Promise<
   server = createServer((socket) => {
     trackSocket(socket);
     const chunks: Buffer[] = [];
-    let replied = false;
+    const onFrame = collectFrames(() => {
+      resolveReceived?.(Buffer.concat(chunks));
+      socket.write(reply);
+    });
     socket.on('data', (chunk: Buffer) => {
-      chunks.push(chunk);
-      if (replied) {
-        return;
-      }
-
-      const bytes = Buffer.concat(chunks);
-      if (bytes.length >= 4 && bytes.subarray(-4).equals(Buffer.alloc(4))) {
-        replied = true;
-        resolveReceived?.(bytes);
-        socket.write('1: OK\n');
-      }
+      chunks.push(Buffer.from(chunk));
+      onFrame(chunk);
     });
   });
   await new Promise<void>((resolve) => server?.listen(0, '127.0.0.1', resolve));
@@ -79,14 +120,17 @@ const startSplitReplyServer = async (first: Buffer, second: Buffer): Promise<num
   server = createServer((socket) => {
     trackSocket(socket);
     socket.setNoDelay(true);
-    socket.once('data', () => {
-      socket.write(first);
-      setTimeout(() => {
-        if (!socket.destroyed) {
-          socket.write(second);
-        }
-      }, 50);
-    });
+    socket.on(
+      'data',
+      collectFrames(() => {
+        socket.write(first);
+        setTimeout(() => {
+          if (!socket.destroyed) {
+            socket.write(second);
+          }
+        }, 50);
+      }),
+    );
   });
   await new Promise<void>((resolve) => server?.listen(0, '127.0.0.1', resolve));
   const address = server.address() as AddressInfo;
@@ -109,16 +153,19 @@ const startTricklingServer = async (): Promise<number> => {
 };
 
 describe('ClamAvVirusScanner', () => {
-  it('streams a file through zINSTREAM and reports clean', async () => {
-    const port = await startServer('1: OK\n');
+  it('streams a file through NUL-terminated zINSTREAM and reports clean', async () => {
+    const port = await startServer(CLEAN_REPLY);
     const result = await scannerFor(port).scan(Readable.from([Buffer.from('hello')]));
     expect(result).toEqual({ verdict: 'clean' });
   });
 
-  it('reports an infection with a sanitized signature', async () => {
-    const port = await startServer('1: FOUND Eicar-Test-Signature\n');
+  it('reports an infection and preserves spaces in the clamd signature', async () => {
+    const port = await startServer('stream: Eicar-Test-Signature (test variant) FOUND\0');
     const result = await scannerFor(port).scan(Readable.from([Buffer.from('eicar')]));
-    expect(result).toEqual({ verdict: 'infected', signature: 'Eicar-Test-Signature' });
+    expect(result).toEqual({
+      verdict: 'infected',
+      signature: 'Eicar-Test-Signature (test variant)',
+    });
   });
 
   it('fails closed when the daemon does not answer', async () => {
@@ -128,8 +175,15 @@ describe('ClamAvVirusScanner', () => {
     );
   });
 
+  it('rejects an invented bare-OK reply instead of treating it as clean', async () => {
+    const port = await startServer('OK\0');
+    await expect(scannerFor(port).scan(Readable.from([Buffer.from('x')]))).rejects.toThrow(
+      VirusScannerException,
+    );
+  });
+
   it('strips embedded control characters from the reported signature', async () => {
-    const port = await startServer('1: FOUND Eicar\u0000-Test\u0001-Signature\n');
+    const port = await startServer('stream: Eicar\u0001-Test\u0002-Signature FOUND\0');
     const result = await scannerFor(port).scan(Readable.from([Buffer.from('eicar')]));
     expect(result.verdict).toBe('infected');
     if (result.verdict === 'infected') {
@@ -146,13 +200,11 @@ describe('ClamAvVirusScanner', () => {
 
     const length = Buffer.alloc(4);
     length.writeUInt32BE(payload.length, 0);
-    expect(await received).toEqual(
-      Buffer.concat([Buffer.from('zINSTREAM\n'), length, payload, Buffer.alloc(4)]),
-    );
+    expect(await received).toEqual(Buffer.concat([COMMAND, length, payload, Buffer.alloc(4)]));
   });
 
-  it('decodes multi-byte signatures split across reply chunks', async () => {
-    const reply = Buffer.from('1: FOUND Eicar-\u2713Signature\n');
+  it('decodes multi-byte signatures split across NUL-terminated reply chunks', async () => {
+    const reply = Buffer.from('stream: Eicar-\u2713Signature FOUND\0');
     const splitAt = reply.indexOf(Buffer.from('\u2713')) + 1;
     const port = await startSplitReplyServer(reply.subarray(0, splitAt), reply.subarray(splitAt));
 

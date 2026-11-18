@@ -799,21 +799,25 @@ describe('ClamAvProtocol', () => {
     expect(protocol.terminator()).toEqual(Buffer.alloc(4));
   });
 
-  it('parses clamd stream replies', () => {
-    expect(protocol.parseResponse('1: OK\n')).toEqual({ verdict: 'clean' });
-    expect(protocol.parseResponse('OK')).toEqual({ verdict: 'clean' });
-    expect(protocol.parseResponse('1: FOUND Eicar-Test-Signature\n')).toEqual({
+  it('parses NUL-terminated clamd stream replies', () => {
+    expect(protocol.parseResponse('stream: OK\0')).toEqual({ verdict: 'clean' });
+    expect(protocol.parseResponse('stream: Eicar-Test-Signature FOUND\0')).toEqual({
       verdict: 'infected',
       signature: 'Eicar-Test-Signature',
+    });
+    expect(protocol.parseResponse('stream: Phishing.URL (Heuristic Variant) FOUND\0')).toEqual({
+      verdict: 'infected',
+      signature: 'Phishing.URL (Heuristic Variant)',
     });
   });
 
   it('truncates hostile signatures and rejects malformed responses', () => {
-    const long = protocol.parseResponse(`FOUND ${'x'.repeat(900)}`);
+    const long = protocol.parseResponse(`stream: ${'x'.repeat(900)} FOUND\0`);
     expect(long).toMatchObject({ verdict: 'infected' });
     if (long.verdict === 'infected') expect(long.signature).toHaveLength(512);
-    expect(() => protocol.parseResponse('ERROR broken')).toThrow(VirusScannerException);
-    expect(() => protocol.parseResponse('FOUND')).toThrow(VirusScannerException);
+    for (const malformed of ['OK\0', 'stream: OK', 'ERROR broken\0', 'stream: FOUND\0']) {
+      expect(() => protocol.parseResponse(malformed)).toThrow(VirusScannerException);
+    }
   });
 });
 ```
@@ -1040,17 +1044,28 @@ export class ClamAvProtocol {
   }
 
   parseResponse(response: string): ScanResult {
-    const text = response.replace(/^\d+:\s*/, '').trim();
+    const prefix = 'stream: ';
+    const foundSuffix = ' FOUND';
 
-    if (text === 'OK') {
+    if (!response.endsWith('\0')) {
+      throw new VirusScannerException('Unexpected ClamAV response');
+    }
+
+    const text = response.slice(0, -1);
+    if (!text.startsWith(prefix)) {
+      throw new VirusScannerException('Unexpected ClamAV response');
+    }
+
+    const verdict = text.slice(prefix.length);
+    if (verdict === 'OK') {
       return { verdict: 'clean' };
     }
 
-    if (text.startsWith('FOUND')) {
-      const signature = text.slice('FOUND'.length).trim().slice(0, MAX_SIGNATURE_LENGTH);
+    if (verdict.endsWith(foundSuffix)) {
+      const signature = verdict.slice(0, -foundSuffix.length);
 
       if (signature.length > 0) {
-        return { verdict: 'infected', signature };
+        return { verdict: 'infected', signature: signature.slice(0, MAX_SIGNATURE_LENGTH) };
       }
     }
 
@@ -1339,6 +1354,8 @@ import { VirusScannerException } from '@/core/errors/repository.error.js';
 import { ClamAvVirusScanner } from '@/modules/media/data/clamav-virus.scanner.js';
 import { ClamAvProtocol } from '@/modules/media/logic/clamav-protocol.js';
 
+const COMMAND = Buffer.from('zINSTREAM\0');
+
 let server: Server | undefined;
 
 afterEach(async () => {
@@ -1346,11 +1363,43 @@ afterEach(async () => {
   server = undefined;
 });
 
+/** Accepts only a NUL-terminated command and frames ending in a zero-length chunk. */
+const collectFrames = (onComplete: () => void): ((chunk: Buffer) => void) => {
+  let pending = Buffer.alloc(0);
+  let commandSeen = false;
+  let completed = false;
+
+  return (chunk: Buffer) => {
+    if (completed) return;
+    pending = Buffer.concat([pending, chunk]);
+    if (!commandSeen) {
+      if (pending.length < COMMAND.length || !pending.subarray(0, COMMAND.length).equals(COMMAND)) {
+        return;
+      }
+      pending = pending.subarray(COMMAND.length);
+      commandSeen = true;
+    }
+    while (pending.length >= 4) {
+      const length = pending.readUInt32BE(0);
+      if (length === 0) {
+        completed = true;
+        onComplete();
+        return;
+      }
+      if (pending.length < 4 + length) return;
+      pending = pending.subarray(4 + length);
+    }
+  };
+};
+
 const startServer = async (reply: string | null): Promise<number> => {
   server = createServer((socket) => {
-    socket.once('data', () => {
-      if (reply !== null) socket.write(reply);
-    });
+    socket.on(
+      'data',
+      collectFrames(() => {
+        if (reply !== null) socket.write(reply);
+      }),
+    );
   });
   await new Promise<void>((resolve) => server?.listen(0, '127.0.0.1', resolve));
   const address = server.address() as AddressInfo;
@@ -1364,16 +1413,19 @@ const scannerFor = (port: number, timeoutMs = 1000): ClamAvVirusScanner =>
   );
 
 describe('ClamAvVirusScanner', () => {
-  it('streams a file through zINSTREAM and reports clean', async () => {
-    const port = await startServer('1: OK\n');
+  it('streams a file through NUL-terminated zINSTREAM and reports clean', async () => {
+    const port = await startServer('stream: OK\0');
     const result = await scannerFor(port).scan(Readable.from([Buffer.from('hello')]));
     expect(result).toEqual({ verdict: 'clean' });
   });
 
-  it('reports an infection with a sanitized signature', async () => {
-    const port = await startServer('1: FOUND Eicar-Test-Signature\n');
+  it('reports an infection and preserves spaces in the clamd signature', async () => {
+    const port = await startServer('stream: Eicar-Test-Signature (test variant) FOUND\0');
     const result = await scannerFor(port).scan(Readable.from([Buffer.from('eicar')]));
-    expect(result).toEqual({ verdict: 'infected', signature: 'Eicar-Test-Signature' });
+    expect(result).toEqual({
+      verdict: 'infected',
+      signature: 'Eicar-Test-Signature (test variant)',
+    });
   });
 
   it('fails closed when the daemon does not answer', async () => {
@@ -1397,13 +1449,16 @@ Create `src/modules/media/data/clamav-virus.scanner.ts`:
 ```ts
 import { connect, type Socket } from 'node:net';
 import type { Readable } from 'node:stream';
+import { StringDecoder } from 'node:string_decoder';
 import { inject, injectable } from 'inversify';
 import type { AppConfig } from '@/core/config/app.config.js';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import { VirusScannerException } from '@/core/errors/repository.error.js';
-import { MEDIA_TYPES } from '@/modules/media/media.types.js';
 import type { ClamAvProtocol } from '@/modules/media/logic/clamav-protocol.js';
 import type { ScanResult, VirusScanner } from '@/modules/media/logic/ports/virus-scanner.js';
+import { MEDIA_TYPES } from '@/modules/media/media.types.js';
+
+const INSTREAM_COMMAND = 'zINSTREAM\0';
 
 /** Streams objects to clamd using the INSTREAM protocol with a hard timeout. */
 @injectable()
@@ -1418,61 +1473,124 @@ export class ClamAvVirusScanner implements VirusScanner {
 
     return new Promise<ScanResult>((resolve, reject) => {
       const socket: Socket = connect({ host, port });
+      const decoder = new StringDecoder('utf8');
       let response = '';
       let settled = false;
+      let socketReady = false;
+      let streamEnded = stream.readableEnded;
+      let terminatorSent = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
 
-      const fail = (error: Error): void => {
-        if (settled) return;
+      const onDrain = (): void => {
+        if (!settled) {
+          stream.resume();
+        }
+      };
+
+      // Single terminal path: clear the wall-clock timer and detach backpressure state.
+      const cleanup = (): boolean => {
+        if (settled) {
+          return false;
+        }
         settled = true;
+        if (timer) {
+          clearTimeout(timer);
+        }
+        socket.off('drain', onDrain);
         stream.destroy();
         socket.destroy();
-        reject(new VirusScannerException('Virus scan failed', { cause: error }));
+        return true;
+      };
+
+      // Fail closed with a sanitized error; never propagate raw socket or protocol text.
+      const fail = (): void => {
+        if (cleanup()) {
+          reject(new VirusScannerException('Virus scan failed'));
+        }
       };
 
       const succeed = (result: ScanResult): void => {
-        if (settled) return;
-        settled = true;
-        stream.destroy();
-        socket.destroy();
-        resolve(result);
+        if (cleanup()) {
+          resolve(result);
+        }
       };
 
-      socket.setTimeout(timeoutMs, () => fail(new Error('ClamAV scan timed out')));
-      socket.once('error', fail);
+      const writeTerminator = (): void => {
+        if (settled || !socketReady || terminatorSent) {
+          return;
+        }
+        terminatorSent = true;
+        socket.write(this.protocol.terminator(), (terminatorError) => {
+          if (terminatorError) {
+            fail();
+          }
+        });
+      };
+
+      // Inactivity timeouts can be reset by a daemon that keeps trickling bytes, so bound the
+      // whole exchange with a wall-clock deadline as well.
+      timer = setTimeout(() => fail(), timeoutMs);
+
+      socket.setTimeout(timeoutMs, () => fail());
+      socket.once('error', () => fail());
       socket.once('close', () => {
-        if (!settled) fail(new Error('ClamAV closed the connection before replying'));
+        if (!settled) {
+          fail();
+        }
       });
-
+      socket.on('drain', onDrain);
       socket.on('data', (chunk: Buffer) => {
-        response += chunk.toString('utf8');
+        if (settled) {
+          return;
+        }
+        response += decoder.write(chunk);
 
-        if (!response.includes('\n') || settled) {
+        // clamd terminates replies with NUL, not a newline.
+        const terminatorIndex = response.indexOf('\0');
+        if (terminatorIndex === -1) {
           return;
         }
 
         try {
-          succeed(this.protocol.parseResponse(response));
-        } catch (error) {
-          fail(error instanceof Error ? error : new Error('Invalid ClamAV response'));
+          // Normalize control characters in the body while keeping the NUL reply delimiter.
+          const body = response.slice(0, terminatorIndex).replace(/\p{Cc}/gu, ' ');
+          succeed(this.protocol.parseResponse(`${body}\0`));
+        } catch {
+          fail();
         }
       });
 
+      // Listeners are attached before connect so an early source error cannot be uncaught, and the
+      // stream stays paused until the protocol prefix has been written.
+      stream.on('data', (chunk: Buffer) => {
+        if (settled || !socketReady) {
+          return;
+        }
+        if (!socket.write(this.protocol.frame(chunk))) {
+          stream.pause();
+        }
+      });
+      stream.once('error', () => fail());
+      stream.once('end', () => {
+        streamEnded = true;
+        writeTerminator();
+      });
+      stream.pause();
+
       socket.once('connect', () => {
-        socket.write('zINSTREAM\n', (error) => {
-          if (error) {
-            fail(error);
+        // z-prefixed clamd commands must be NUL-terminated; '\n' makes clamd wait forever.
+        socket.write(INSTREAM_COMMAND, (writeError) => {
+          if (writeError) {
+            fail();
             return;
           }
 
-          stream.on('data', (chunk: Buffer) => {
-            socket.write(this.protocol.frame(chunk));
-          });
-          stream.once('error', fail);
-          stream.once('end', () => {
-            socket.write(this.protocol.terminator(), (writeError) => {
-              if (writeError) fail(writeError);
-            });
-          });
+          socketReady = true;
+          if (streamEnded) {
+            writeTerminator();
+            return;
+          }
+          stream.resume();
         });
       });
     });
@@ -1489,7 +1607,7 @@ Expected: PASS (3 tests). The timeout case proves a hung daemon becomes a wrappe
 
 ```bash
 git add src/modules/media/data/clamav-virus.scanner.ts tests/unit/clamav-scanner.test.ts
-git commit -m "feat(media): add fail-closed ClamAV INSTREAM adapter" -m "Implement the VirusScanner port with clamd's zINSTREAM protocol, prefixing stream chunks with big-endian lengths, writing a zero-length terminator, and parsing OK/FOUND replies through the pure protocol helper. Enforce CLAMAV_TIMEOUT_MS, destroy the socket and source stream on completion, and wrap socket, timeout, and malformed-reply failures in VirusScannerException so MediaService can translate them to 503 without leaking protocol text. Cover clean, infected, and hung-daemon paths with a local fake clamd server."
+git commit -m "feat(media): add fail-closed ClamAV INSTREAM adapter" -m "Implement the VirusScanner port with clamd's NUL-terminated zINSTREAM command, prefixing stream chunks with big-endian lengths, writing a zero-length terminator, and parsing NUL-terminated stream: OK / stream: ... FOUND replies through the pure protocol helper. Enforce CLAMAV_TIMEOUT_MS, destroy the socket and source stream on completion, and wrap socket, timeout, and malformed-reply failures in VirusScannerException so MediaService can translate them to 503 without leaking protocol text. Cover clean, infected, and hung-daemon paths with a local fake clamd server."
 ```
 
 ---

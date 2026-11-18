@@ -126,11 +126,14 @@ short TTL. Presigned `GET` is issued only when the row status is `ready`.
 `VirusScanner` exposes `scan(stream: Readable): Promise<ScanResult>` where the
 result is `{ verdict: 'clean' }` or `{ verdict: 'infected', signature: string }`.
 
-`ClamAvVirusScanner` connects to `CLAMAV_HOST:CLAMAV_PORT`, sends clamd's
-`zINSTREAM` command, streams chunks prefixed with 4-byte big-endian lengths,
-terminates with a zero-length chunk, and parses `OK` / `FOUND` responses. It
-enforces `CLAMAV_TIMEOUT_MS` and caps stored signature text. Protocol framing
-is a pure helper so it can be unit-tested without a live daemon.
+`ClamAvVirusScanner` connects to `CLAMAV_HOST:CLAMAV_PORT`, sends the
+NUL-terminated `zINSTREAM\0` command, streams chunks prefixed with 4-byte
+big-endian lengths, terminates with a zero-length chunk, and reads the
+NUL-terminated reply. Replies begin `stream: `; a clean verdict is exactly
+`stream: OK\0` and an infected verdict ends with ` FOUND\0`, with the signature
+between those markers (spaces preserved). It enforces `CLAMAV_TIMEOUT_MS` and
+caps stored signature text. Protocol framing is a pure helper so it can be
+unit-tested without a live daemon.
 
 When `MEDIA_SCAN_REQUIRED=false`, `MediaService` skips the scanner after the S3
 `HeadObject` recheck and marks the object `ready`. This is the only bypass and
