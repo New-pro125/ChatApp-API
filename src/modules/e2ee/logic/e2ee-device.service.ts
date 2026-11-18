@@ -1,0 +1,137 @@
+import { inject, injectable } from 'inversify';
+import {
+  E2eeDeviceConflictException,
+  E2eeDeviceNotFoundException,
+  E2eePrekeyExhaustedException,
+} from '@/core/errors/domain.error.js';
+import { UniqueConstraintException } from '@/core/errors/repository.error.js';
+import { E2EE_TYPES } from '@/modules/e2ee/e2ee.types.js';
+import type {
+  E2eeKeyService,
+  E2eeRegistrationInput,
+} from '@/modules/e2ee/logic/e2ee-key.service.js';
+import type {
+  CreateE2eeDeviceInput,
+  E2eeRegistryRepository,
+} from '@/modules/e2ee/logic/ports/e2ee-registry.repository.js';
+
+/** Coordinates public device-key registration with the E2EE registry. */
+@injectable()
+export class E2eeDeviceService {
+  constructor(
+    @inject(E2EE_TYPES.E2eeRegistryRepository)
+    private readonly registry: E2eeRegistryRepository,
+    @inject(E2EE_TYPES.E2eeKeyService) private readonly keys: E2eeKeyService,
+  ) {}
+
+  register(userId: string, deviceId: string, input: E2eeRegistrationInput) {
+    this.keys.assertRegistrationInput(input);
+
+    return this.translateConflicts(() =>
+      this.registry.create(this.toRegistryInput(userId, deviceId, input)),
+    );
+  }
+
+  listForUser(userId: string) {
+    return this.registry.listByUser(userId);
+  }
+
+  async rotate(userId: string, deviceId: string, input: E2eeRegistrationInput) {
+    this.keys.assertRegistrationInput(input);
+    const existing = await this.registry.findByUserAndDevice(userId, deviceId);
+
+    if (!existing) {
+      throw new E2eeDeviceNotFoundException();
+    }
+
+    return this.translateConflicts(() =>
+      this.registry.replace(this.toRegistryInput(userId, deviceId, input)),
+    );
+  }
+
+  async addOneTimePrekeys(
+    userId: string,
+    deviceId: string,
+    keys: ReadonlyArray<{ readonly id: number; readonly publicKey: string }>,
+  ): Promise<void> {
+    const existing = await this.registry.findByUserAndDevice(userId, deviceId);
+
+    if (!existing) {
+      throw new E2eeDeviceNotFoundException();
+    }
+
+    if (keys.length < 1 || keys.length > 100) {
+      throw new E2eeDeviceConflictException('Provide between 1 and 100 one-time prekeys');
+    }
+
+    for (const key of keys) {
+      this.keys.assertRegistrationInput({
+        signingPublicKey: existing.signingPublicKey,
+        identityPublicKey: existing.identityPublicKey,
+        identitySignature: existing.identitySignature,
+        signedPrekey: {
+          id: existing.signedPrekeyId,
+          publicKey: existing.signedPrekeyPublicKey,
+          signature: existing.signedPrekeySignature,
+        },
+        oneTimePrekeys: [key],
+      });
+    }
+
+    try {
+      await this.registry.addOneTimePrekeys(deviceId, keys);
+    } catch (error) {
+      if (error instanceof UniqueConstraintException) {
+        throw new E2eeDeviceConflictException('One-time prekey id is already in use');
+      }
+
+      throw error;
+    }
+  }
+
+  async bundle(userId: string, deviceId: string) {
+    const device = await this.registry.findByUserAndDevice(userId, deviceId);
+
+    if (!device) {
+      throw new E2eeDeviceNotFoundException();
+    }
+
+    const oneTimePrekey = await this.registry.consumeOneTimePrekey(deviceId);
+
+    if (!oneTimePrekey) {
+      throw new E2eePrekeyExhaustedException();
+    }
+
+    return { device, oneTimePrekey };
+  }
+
+  private toRegistryInput(
+    userId: string,
+    deviceId: string,
+    input: E2eeRegistrationInput,
+  ): CreateE2eeDeviceInput {
+    return {
+      userId,
+      deviceId,
+      signingPublicKey: input.signingPublicKey,
+      identityPublicKey: input.identityPublicKey,
+      identitySignature: input.identitySignature,
+      signedPrekeyId: input.signedPrekey.id,
+      signedPrekeyPublicKey: input.signedPrekey.publicKey,
+      signedPrekeySignature: input.signedPrekey.signature,
+      oneTimePrekeys: input.oneTimePrekeys,
+    };
+  }
+
+  private async translateConflicts<T>(operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (error instanceof UniqueConstraintException) {
+        throw new E2eeDeviceConflictException();
+      }
+
+      throw error;
+    }
+  }
+}
