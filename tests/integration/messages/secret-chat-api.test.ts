@@ -7,7 +7,7 @@ const ciphertext = {
   recipientDeviceId: '',
   ciphertext: Buffer.from('ciphertext').toString('base64url'),
   nonce: 'A'.repeat(16),
-  ephemeralPublicKey: 'B'.repeat(43),
+  ephemeralPublicKey: 'A'.repeat(43),
 };
 
 describe('secret chats', () => {

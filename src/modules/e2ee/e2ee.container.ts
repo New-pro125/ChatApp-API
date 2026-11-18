@@ -1,5 +1,6 @@
 import { Container } from 'inversify';
 import { CORE_TYPES } from '@/core/container/core.types.js';
+import type { E2eeCiphertextValidator } from '@/core/e2ee/e2ee-ciphertext.validator.js';
 import type { E2eeDeviceReader } from '@/core/e2ee/e2ee-device.reader.js';
 import { E2eeRateLimiter } from '@/core/http/middleware/rate-limit.js';
 import { RequestScopeMiddleware } from '@/core/http/middleware/request-scope.js';
@@ -37,5 +38,8 @@ export class E2eeContainer extends Container {
     this.root
       .bind<E2eeDeviceReader>(CORE_TYPES.E2eeDeviceReader)
       .toConstantValue(this.get<E2eeDeviceReaderService>(E2EE_TYPES.E2eeDeviceReader));
+    this.root
+      .bind<E2eeCiphertextValidator>(CORE_TYPES.E2eeCiphertextValidator)
+      .toConstantValue(this.get<E2eeKeyService>(E2EE_TYPES.E2eeKeyService));
   }
 }

@@ -1,5 +1,6 @@
 import { inject, injectable } from 'inversify';
 import { CORE_TYPES } from '@/core/container/core.types.js';
+import type { E2eeCiphertextValidator } from '@/core/e2ee/e2ee-ciphertext.validator.js';
 import type { E2eeDeviceReader } from '@/core/e2ee/e2ee-device.reader.js';
 import {
   E2eeDeviceNotFoundException,
@@ -43,6 +44,8 @@ export class MessageService {
     @inject(MESSAGES_TYPES.ChatRepository) private readonly chats: ChatRepository,
     @inject(MESSAGES_TYPES.ChatMemberRepository) private readonly members: ChatMemberRepository,
     @inject(CORE_TYPES.E2eeDeviceReader) private readonly e2eeDevices: E2eeDeviceReader,
+    @inject(CORE_TYPES.E2eeCiphertextValidator)
+    private readonly ciphertextValidator: E2eeCiphertextValidator,
   ) {}
 
   async send(userId: string, chatId: string, input: SendMessageInput): Promise<MessageRecord> {
@@ -100,6 +103,8 @@ export class MessageService {
     if (!recipient) {
       throw new E2eeDeviceNotFoundException();
     }
+
+    this.ciphertextValidator.assertCiphertextInput(input);
 
     return this.messages.createSecret({
       chatId,

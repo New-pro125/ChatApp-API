@@ -1,5 +1,9 @@
 import { createPublicKey, type KeyObject, verify } from 'node:crypto';
 import { injectable } from 'inversify';
+import type {
+  E2eeCiphertextInput,
+  E2eeCiphertextValidator,
+} from '@/core/e2ee/e2ee-ciphertext.validator.js';
 import { InvalidE2eeKeyException } from '@/core/errors/domain.error.js';
 
 const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
@@ -22,16 +26,9 @@ export interface E2eeRegistrationInput {
   readonly oneTimePrekeys: E2eeOneTimePrekeyInput[];
 }
 
-export interface E2eeCiphertextInput {
-  readonly recipientDeviceId: string;
-  readonly ciphertext: string;
-  readonly nonce: string;
-  readonly ephemeralPublicKey: string;
-}
-
 /** Validates public key encodings and Ed25519 signatures without keeping secrets. */
 @injectable()
-export class E2eeKeyService {
+export class E2eeKeyService implements E2eeCiphertextValidator {
   assertRegistrationInput(input: E2eeRegistrationInput): void {
     const signingKey = this.ed25519Key(input.signingPublicKey, 'signingPublicKey');
     const identityKey = this.decode(input.identityPublicKey, 32, 'identityPublicKey');
