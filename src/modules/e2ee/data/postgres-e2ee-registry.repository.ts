@@ -5,7 +5,7 @@ import { PostgresErrorInspector } from '@/core/database/database.error-inspector
 import type { AppDatabase } from '@/core/database/database.provider.js';
 import { e2eeDevices, e2eePrekeys } from '@/core/database/schema/index.js';
 import { E2eeDeviceConflictException } from '@/core/errors/domain.error.js';
-import { UniqueConstraintException } from '@/core/errors/repository.error.js';
+import { PersistenceException, UniqueConstraintException } from '@/core/errors/repository.error.js';
 import { E2eeMapper } from '@/modules/e2ee/data/e2ee.mapper.js';
 import type { E2eeDeviceRecord } from '@/modules/e2ee/logic/entities/e2ee-device-record.js';
 import type { E2eePrekeyRecord } from '@/modules/e2ee/logic/entities/e2ee-prekey-record.js';
@@ -39,7 +39,7 @@ export class PostgresE2eeRegistryRepository implements E2eeRegistryRepository {
           .returning();
 
         if (!row) {
-          throw new Error('Device insert returned no row');
+          throw new PersistenceException('Device insert returned no row');
         }
 
         await tx.insert(e2eePrekeys).values(
@@ -53,11 +53,15 @@ export class PostgresE2eeRegistryRepository implements E2eeRegistryRepository {
         return this.mapper.device(row);
       });
     } catch (error) {
+      if (error instanceof E2eeDeviceConflictException || error instanceof PersistenceException) {
+        throw error;
+      }
+
       if (this.inspector.isUniqueViolation(error)) {
         throw new E2eeDeviceConflictException();
       }
 
-      throw new UniqueConstraintException('Could not register E2EE device', { cause: error });
+      throw new PersistenceException('Failed to register E2EE device', { cause: error });
     }
   }
 
@@ -91,40 +95,54 @@ export class PostgresE2eeRegistryRepository implements E2eeRegistryRepository {
     return rows.map((row) => this.mapper.device(row));
   }
 
-  replace(input: CreateE2eeDeviceInput): Promise<E2eeDeviceRecord> {
-    return this.db.transaction(async (tx) => {
-      const [row] = await tx
-        .update(e2eeDevices)
-        .set({
-          signingPublicKey: input.signingPublicKey,
-          identityPublicKey: input.identityPublicKey,
-          identitySignature: input.identitySignature,
-          signedPrekeyId: input.signedPrekeyId,
-          signedPrekeyPublicKey: input.signedPrekeyPublicKey,
-          signedPrekeySignature: input.signedPrekeySignature,
-          updatedAt: new Date(),
-          rotatedAt: new Date(),
-        })
-        .where(
-          sql`${e2eeDevices.userId} = ${input.userId} and ${e2eeDevices.deviceId} = ${input.deviceId}`,
-        )
-        .returning();
+  async replace(input: CreateE2eeDeviceInput): Promise<E2eeDeviceRecord> {
+    try {
+      return await this.db.transaction(async (tx) => {
+        const [row] = await tx
+          .update(e2eeDevices)
+          .set({
+            signingPublicKey: input.signingPublicKey,
+            identityPublicKey: input.identityPublicKey,
+            identitySignature: input.identitySignature,
+            signedPrekeyId: input.signedPrekeyId,
+            signedPrekeyPublicKey: input.signedPrekeyPublicKey,
+            signedPrekeySignature: input.signedPrekeySignature,
+            updatedAt: new Date(),
+            rotatedAt: new Date(),
+          })
+          .where(
+            sql`${e2eeDevices.userId} = ${input.userId} and ${e2eeDevices.deviceId} = ${input.deviceId}`,
+          )
+          .returning();
 
-      if (!row) {
-        throw new E2eeDeviceConflictException('Device must be registered before rotation');
+        if (!row) {
+          throw new E2eeDeviceConflictException('Device must be registered before rotation');
+        }
+
+        await tx.delete(e2eePrekeys).where(eq(e2eePrekeys.deviceId, input.deviceId));
+        await tx.insert(e2eePrekeys).values(
+          input.oneTimePrekeys.map((key) => ({
+            deviceId: input.deviceId,
+            prekeyId: key.id,
+            publicKey: key.publicKey,
+          })),
+        );
+
+        return this.mapper.device(row);
+      });
+    } catch (error) {
+      if (error instanceof E2eeDeviceConflictException) {
+        throw error;
       }
 
-      await tx.delete(e2eePrekeys).where(eq(e2eePrekeys.deviceId, input.deviceId));
-      await tx.insert(e2eePrekeys).values(
-        input.oneTimePrekeys.map((key) => ({
-          deviceId: input.deviceId,
-          prekeyId: key.id,
-          publicKey: key.publicKey,
-        })),
-      );
+      if (this.inspector.isUniqueViolation(error)) {
+        throw new UniqueConstraintException('One-time prekey id is already in use', {
+          cause: error,
+        });
+      }
 
-      return this.mapper.device(row);
-    });
+      throw new PersistenceException('Failed to rotate E2EE device', { cause: error });
+    }
   }
 
   async addOneTimePrekeys(
@@ -142,7 +160,7 @@ export class PostgresE2eeRegistryRepository implements E2eeRegistryRepository {
         });
       }
 
-      throw error;
+      throw new PersistenceException('Failed to add one-time E2EE prekeys', { cause: error });
     }
   }
 
