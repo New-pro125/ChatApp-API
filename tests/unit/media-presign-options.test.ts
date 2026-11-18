@@ -50,6 +50,12 @@ describe('S3ObjectStore presigning', () => {
     expect(put.url).toContain('X-Amz-Expires=60');
     expect(put.url).toContain('localhost:9000');
 
+    const signedHeaders = new Set(
+      new URL(put.url).searchParams.get('X-Amz-SignedHeaders')?.split(';') ?? [],
+    );
+    expect(signedHeaders.has('content-type')).toBe(true);
+    expect(signedHeaders.has('content-length')).toBe(true);
+
     const get = await store.presignGet('media/o/i.png');
     expect(get.url).toContain('X-Amz-Expires=60');
     expect(get.expiresAt.getTime()).toBeGreaterThan(Date.now());

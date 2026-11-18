@@ -65,7 +65,10 @@ export class S3ObjectStore implements ObjectStore {
         ContentType: options.contentType,
         ContentLength: options.sizeBytes,
       });
-      const url = await getSignedUrl(this.client, command, { expiresIn: options.expiresIn });
+      const url = await getSignedUrl(this.client, command, {
+        expiresIn: options.expiresIn,
+        signableHeaders: new Set(['content-type']),
+      });
 
       return { url, headers: options.headers, expiresAt: options.expiresAt };
     } catch {
