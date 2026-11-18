@@ -580,9 +580,19 @@ Clients register one device per refresh-token family:
 
 - `POST /api/e2ee/devices`
 - `GET /api/e2ee/devices`
+- `GET /api/e2ee/users/:userId/devices`
 - `POST /api/e2ee/devices/rotate`
 - `POST /api/e2ee/devices/prekeys`
 - `GET /api/e2ee/users/:userId/devices/:deviceId/bundle`
+
+The peer device listing lets an authenticated client discover another user's
+public devices without that user's token. Device listings expose
+`identitySignature` and `hasOneTimePreKeys`, but never private keys or shared
+secrets. Clients **must** verify that `identitySignature` is a valid Ed25519
+signature by the device's `signingPublicKey` over the UTF-8 bytes
+`e2ee-identity:` followed by the raw 32-byte `identityPublicKey`, and must
+verify the signed prekey signature the same way over
+`e2ee-signed-prekey:${id}:` followed by the raw prekey bytes.
 
 Then they can open and use a secret chat:
 
