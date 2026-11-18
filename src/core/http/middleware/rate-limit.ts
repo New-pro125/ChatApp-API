@@ -118,3 +118,16 @@ export class E2eeRateLimiter extends RedisRateLimiter {
     });
   }
 }
+
+/** Limits upload tickets, finalize attempts, and signed URL issuance. */
+@injectable()
+export class MediaRateLimiter extends RedisRateLimiter {
+  constructor(@inject(CORE_TYPES.RedisClient) client: RedisClient) {
+    super(client, {
+      windowMs: FIFTEEN_MINUTES_MS,
+      limit: 30,
+      prefix: 'rl:media:',
+      message: 'Too many media operations. Try again later.',
+    });
+  }
+}
