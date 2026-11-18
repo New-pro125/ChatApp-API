@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { isPrime } from '@/core/math/is-prime.js';
+import { isPrime } from "@/core/math/is-prime.js";
+import { describe, expect, it } from "vitest";
 
-describe('isPrime', () => {
+describe("isPrime", () => {
   it.each([
     { value: 2, expected: true },
     { value: 3, expected: true },
@@ -19,7 +19,7 @@ describe('isPrime', () => {
     { value: 2305843009213693951n, expected: true },
     { value: 4n, expected: false },
     { value: -2n, expected: false },
-  ])('classifies $value as $expected', ({ value, expected }) => {
+  ])("classifies $value as $expected", ({ value, expected }) => {
     expect(isPrime(value)).toBe(expected);
   });
 });
