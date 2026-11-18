@@ -73,6 +73,11 @@ export const commonErrorResponses = {
   500: errorResponse('Unexpected server error'),
 } satisfies Record<number, OpenApiResponseContract>;
 
+export const conflictErrorResponse: OpenApiResponseContract = {
+  description: 'The request conflicts with the current state of the resource',
+  schema: apiErrorResponseSchema,
+};
+
 export const noContentResponse: OpenApiResponseContract = {
   description: 'No content',
 };

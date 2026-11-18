@@ -6,6 +6,7 @@ import {
 } from '@/core/errors/domain.error.js';
 import { UniqueConstraintException } from '@/core/errors/repository.error.js';
 import { E2EE_TYPES } from '@/modules/e2ee/e2ee.types.js';
+import type { E2eeDeviceRecord } from '@/modules/e2ee/logic/entities/e2ee-device-record.js';
 import type {
   E2eeKeyService,
   E2eeRegistrationInput,
@@ -14,6 +15,11 @@ import type {
   CreateE2eeDeviceInput,
   E2eeRegistryRepository,
 } from '@/modules/e2ee/logic/ports/e2ee-registry.repository.js';
+
+export interface E2eeDeviceListing {
+  readonly device: E2eeDeviceRecord;
+  readonly hasOneTimePreKeys: boolean;
+}
 
 /** Coordinates public device-key registration with the E2EE registry. */
 @injectable()
@@ -32,8 +38,15 @@ export class E2eeDeviceService {
     );
   }
 
-  listForUser(userId: string) {
-    return this.registry.listByUser(userId);
+  async listForUser(userId: string): Promise<E2eeDeviceListing[]> {
+    const devices = await this.registry.listByUser(userId);
+
+    return Promise.all(
+      devices.map(async (device) => ({
+        device,
+        hasOneTimePreKeys: (await this.registry.countOneTimePrekeys(device.deviceId)) > 0,
+      })),
+    );
   }
 
   async rotate(userId: string, deviceId: string, input: E2eeRegistrationInput) {

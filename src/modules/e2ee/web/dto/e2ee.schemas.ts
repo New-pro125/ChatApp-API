@@ -24,5 +24,5 @@ export const prekeyReplenishmentSchema = z.object({
   oneTimePrekeys: z.array(oneTimePrekeySchema).min(1).max(100),
 });
 
-export const deviceParamsSchema = z.object({ deviceId: z.uuid() });
+export const userParamsSchema = z.object({ userId: z.uuid() });
 export const bundleParamsSchema = z.object({ userId: z.uuid(), deviceId: z.uuid() });

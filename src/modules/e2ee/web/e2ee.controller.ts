@@ -9,6 +9,7 @@ import {
   bundleParamsSchema,
   deviceRegistrationSchema,
   prekeyReplenishmentSchema,
+  userParamsSchema,
 } from '@/modules/e2ee/web/dto/e2ee.schemas.js';
 
 /** HTTP adapter for E2EE device and public key-bundle operations. */
@@ -27,7 +28,7 @@ export class E2eeController {
       deviceRegistrationSchema.parse(req.body),
     );
 
-    this.response.created(res, this.presentDevice(device));
+    this.response.created(res, this.presentDevice({ device, hasOneTimePreKeys: true }));
   };
 
   listMine: RequestHandler = async (req, res) => {
@@ -36,7 +37,19 @@ export class E2eeController {
 
     this.response.list(
       res,
-      devices.map((device) => this.presentDevice(device)),
+      devices.map((listing) => this.presentDevice(listing)),
+    );
+  };
+
+  /** Public device discovery for a peer; the peer never needs to authenticate. */
+  listUserDevices: RequestHandler = async (req, res) => {
+    this.requireAuth(req);
+    const { userId } = userParamsSchema.parse(req.params);
+    const devices = await this.devices.listForUser(userId);
+
+    this.response.list(
+      res,
+      devices.map((listing) => this.presentDevice(listing)),
     );
   };
 
@@ -48,7 +61,7 @@ export class E2eeController {
       deviceRegistrationSchema.parse(req.body),
     );
 
-    this.response.ok(res, this.presentDevice(device));
+    this.response.ok(res, this.presentDevice({ device, hasOneTimePreKeys: true }));
   };
 
   replenish: RequestHandler = async (req, res) => {
@@ -70,6 +83,7 @@ export class E2eeController {
       userId: device.userId,
       signingPublicKey: device.signingPublicKey,
       identityPublicKey: device.identityPublicKey,
+      identitySignature: device.identitySignature,
       signedPrekey: {
         id: device.signedPrekeyId,
         publicKey: device.signedPrekeyPublicKey,
@@ -90,19 +104,29 @@ export class E2eeController {
     return { userId: req.user.id, deviceId: req.auth.deviceId };
   }
 
-  private presentDevice(device: {
-    deviceId: string;
-    identityPublicKey: string;
-    signingPublicKey: string;
-    signedPrekeyId: number;
-    rotatedAt: Date | null;
-    createdAt: Date;
+  private presentDevice(listing: {
+    device: {
+      deviceId: string;
+      userId: string;
+      identityPublicKey: string;
+      signingPublicKey: string;
+      identitySignature: string;
+      signedPrekeyId: number;
+      rotatedAt: Date | null;
+      createdAt: Date;
+    };
+    hasOneTimePreKeys: boolean;
   }) {
+    const { device } = listing;
+
     return {
       deviceId: device.deviceId,
+      userId: device.userId,
       identityPublicKey: device.identityPublicKey,
       signingPublicKey: device.signingPublicKey,
+      identitySignature: device.identitySignature,
       signedPrekeyId: device.signedPrekeyId,
+      hasOneTimePreKeys: listing.hasOneTimePreKeys,
       rotatedAt: device.rotatedAt?.toISOString() ?? null,
       createdAt: device.createdAt.toISOString(),
     };

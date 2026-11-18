@@ -47,6 +47,18 @@ export class E2eeRouter {
         req.container.get<E2eeController>(E2EE_TYPES.E2eeController).listMine(req, res, next),
     );
 
+    routes.get(
+      '/users/:userId/devices',
+      e2eeContracts.listUserDevices,
+      this.requireAuth.handle,
+      this.requireVerifiedEmail.handle,
+      this.limiter.handle,
+      (req, res, next) =>
+        req.container
+          .get<E2eeController>(E2EE_TYPES.E2eeController)
+          .listUserDevices(req, res, next),
+    );
+
     routes.post(
       '/devices/rotate',
       e2eeContracts.rotateDevice,

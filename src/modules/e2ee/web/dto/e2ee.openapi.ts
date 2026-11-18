@@ -1,11 +1,16 @@
 /// <reference types="zod-openapi" />
 import { z } from 'zod';
-import { commonErrorResponses, successEnvelope } from '@/core/http/openapi/openapi.schemas.js';
+import {
+  commonErrorResponses,
+  conflictErrorResponse,
+  successEnvelope,
+} from '@/core/http/openapi/openapi.schemas.js';
 import type { RouteContract } from '@/core/http/openapi/openapi.types.js';
 import {
   bundleParamsSchema,
   deviceRegistrationSchema,
   prekeyReplenishmentSchema,
+  userParamsSchema,
 } from '@/modules/e2ee/web/dto/e2ee.schemas.js';
 
 const bearerSecurity = [{ bearerAuth: [] }] as const;
@@ -13,9 +18,12 @@ const bearerSecurity = [{ bearerAuth: [] }] as const;
 const deviceSchema = z
   .object({
     deviceId: z.uuid(),
+    userId: z.uuid(),
     identityPublicKey: z.string(),
     signingPublicKey: z.string(),
+    identitySignature: z.string(),
     signedPrekeyId: z.number().int().positive(),
+    hasOneTimePreKeys: z.boolean(),
     rotatedAt: z.iso.datetime().nullable(),
     createdAt: z.iso.datetime(),
   })
@@ -27,6 +35,7 @@ const bundleSchema = z
     userId: z.uuid(),
     signingPublicKey: z.string(),
     identityPublicKey: z.string(),
+    identitySignature: z.string(),
     signedPrekey: z.object({
       id: z.number().int().positive(),
       publicKey: z.string(),
@@ -51,6 +60,7 @@ export const e2eeContracts = {
     request: { body: deviceRegistrationSchema },
     responses: {
       201: { description: 'The registered device', schema: deviceResponse },
+      409: conflictErrorResponse,
       ...commonErrorResponses,
     },
   },
@@ -64,6 +74,19 @@ export const e2eeContracts = {
       ...commonErrorResponses,
     },
   },
+  listUserDevices: {
+    operationId: 'e2ee.listUserDevices',
+    tags: ['E2EE'],
+    summary: 'List the public devices registered by another user',
+    description:
+      'Lets an authenticated client discover a peer device before fetching its bundle. The peer does not need to authenticate. Only public key material and rotation metadata are returned; clients must verify that identitySignature is a valid Ed25519 signature by signingPublicKey over the UTF-8 bytes `e2ee-identity:` followed by the raw identityPublicKey bytes.',
+    security: bearerSecurity,
+    request: { params: userParamsSchema },
+    responses: {
+      200: { description: 'The peer public devices', schema: deviceListResponse },
+      ...commonErrorResponses,
+    },
+  },
   rotateDevice: {
     operationId: 'e2ee.rotateDevice',
     tags: ['E2EE'],
@@ -72,6 +95,7 @@ export const e2eeContracts = {
     request: { body: deviceRegistrationSchema },
     responses: {
       200: { description: 'The rotated device', schema: deviceResponse },
+      409: conflictErrorResponse,
       ...commonErrorResponses,
     },
   },
@@ -81,7 +105,11 @@ export const e2eeContracts = {
     summary: 'Add one-time prekeys for the current device',
     security: bearerSecurity,
     request: { body: prekeyReplenishmentSchema },
-    responses: { 204: { description: 'No content' }, ...commonErrorResponses },
+    responses: {
+      204: { description: 'No content' },
+      409: conflictErrorResponse,
+      ...commonErrorResponses,
+    },
   },
   bundle: {
     operationId: 'e2ee.bundle',
@@ -91,6 +119,7 @@ export const e2eeContracts = {
     request: { params: bundleParamsSchema },
     responses: {
       200: { description: 'The key bundle', schema: bundleResponse },
+      409: conflictErrorResponse,
       ...commonErrorResponses,
     },
   },
