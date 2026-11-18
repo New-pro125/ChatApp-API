@@ -569,3 +569,27 @@ import { AuthService } from '@/modules/auth/logic/auth.service.js';
 - `tsx` resolves aliases during development.
 - `tsc-alias` rewrites `@/...` to relative imports in `dist` after `tsc`.
 - `paths` is declared without `baseUrl`, as required by TypeScript 7.
+
+## End-to-end encrypted secret chats
+
+The API supports hybrid E2EE. Normal direct chats remain server-visible and
+searchable. Secret chats (`type: "secret"`) store only opaque ciphertext; the
+API never receives private keys, shared secrets, or plaintext.
+
+Clients register one device per refresh-token family:
+
+- `POST /api/e2ee/devices`
+- `GET /api/e2ee/devices`
+- `POST /api/e2ee/devices/rotate`
+- `POST /api/e2ee/devices/prekeys`
+- `GET /api/e2ee/users/:userId/devices/:deviceId/bundle`
+
+Then they can open and use a secret chat:
+
+- `POST /api/chats/secret`
+- `POST /api/chats/:chatId/secret-messages`
+- `GET /api/chats/:chatId/messages`
+
+Secret messages cannot be edited, deleted, forwarded, replied to, or searched.
+Media, self-destruct timers, and a double ratchet are not part of this release.
+Pre-existing access tokens without the `did` claim must be refreshed.
