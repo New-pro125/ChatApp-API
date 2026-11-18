@@ -1,4 +1,9 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ChatService } from '@/modules/messages/logic/chat.service.js';
+import type { ChatRepository } from '@/modules/messages/logic/ports/chat.repository.js';
+import type { MessagesContainer } from '@/modules/messages/messages.container.js';
+import type { MessagesModule } from '@/modules/messages/messages.module.js';
+import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 import { makeE2eeRegistration } from '../../helpers/e2ee-keys.js';
 import { TestApp } from '../../helpers/test-app.js';
 import { type ApiUser, MessagingApiFixture } from './messaging-api.fixture.js';
@@ -337,5 +342,56 @@ describe('secret chat security boundaries', () => {
       "select count(*)::int as count from chats where direct_key like 'secret:%'",
     );
     expect(chats.rows[0]?.count).toBe(1);
+  });
+
+  it('recovers the winning chat when both opens pass the existing-chat check together', async () => {
+    const alice = await userWithDevice('Alice Barrier Race');
+    const bob = await userWithDevice('Bob Barrier Race');
+    const module = app.application.getModule<MessagesModule>('messages');
+
+    if (!module) {
+      throw new Error('MessagesModule is not registered in the application');
+    }
+
+    const { container } = module as unknown as { container: MessagesContainer };
+    const chats = container.get<ChatRepository>(MESSAGES_TYPES.ChatRepository);
+    const service = container.get<ChatService>(MESSAGES_TYPES.ChatService);
+    const originalLookup = chats.findDirectByKey.bind(chats);
+    let arrivals = 0;
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const lookup = vi.spyOn(chats, 'findDirectByKey').mockImplementation(async (directKey) => {
+      arrivals += 1;
+
+      if (arrivals === 2) {
+        release();
+      }
+
+      await gate;
+
+      return originalLookup(directKey);
+    });
+
+    let chatId: string | undefined;
+
+    try {
+      const [first, second] = await Promise.all([
+        service.openSecret(alice.user.id, bob.user.id),
+        service.openSecret(bob.user.id, alice.user.id),
+      ]);
+
+      expect(first.view.id).toBe(second.view.id);
+      chatId = first.view.id;
+    } finally {
+      lookup.mockRestore();
+    }
+
+    const members = await app.pool.query<{ count: number }>(
+      'select count(*)::int as count from chat_members where chat_id = $1',
+      [chatId],
+    );
+    expect(members.rows[0]?.count).toBe(2);
   });
 });
