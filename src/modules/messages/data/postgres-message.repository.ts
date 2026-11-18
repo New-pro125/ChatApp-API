@@ -2,7 +2,7 @@ import { and, desc, eq, isNull, lt } from 'drizzle-orm';
 import { inject, injectable } from 'inversify';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import type { AppDatabase } from '@/core/database/database.provider.js';
-import { messages } from '@/core/database/schema/index.js';
+import { chats, messages } from '@/core/database/schema/index.js';
 import { PersistenceException } from '@/core/errors/repository.error.js';
 import { MessageMapper, messageSelection } from '@/modules/messages/data/message.mapper.js';
 import type { MessageRecord } from '@/modules/messages/logic/entities/message-record.js';
@@ -19,6 +19,9 @@ import type {
  * the partition key is part of the primary key, so a lookup without it cannot
  * prune partitions. History keysets on `id` (uuidv7, newest-first), which the
  * `(chat_id, id)` primary key serves directly.
+ *
+ * `create` also bumps `chats.updated_at` in the same transaction, so a chat that
+ * receives a message always sorts ahead of quieter chats in the chat list.
  */
 @injectable()
 export class PostgresMessageRepository implements MessageRepository {
@@ -28,26 +31,30 @@ export class PostgresMessageRepository implements MessageRepository {
 
   async create(input: CreateMessageInput): Promise<MessageRecord> {
     try {
-      const rows = await this.db
-        .insert(messages)
-        .values({
-          chatId: input.chatId,
-          senderId: input.senderId,
-          type: input.type ?? 'text',
-          body: input.body,
-          replyToMessageId: input.replyToMessageId ?? null,
-          forwardedFromChatId: input.forwardedFromChatId ?? null,
-          forwardedFromMessageId: input.forwardedFromMessageId ?? null,
-        })
-        .returning(messageSelection);
+      return await this.db.transaction(async (tx) => {
+        const rows = await tx
+          .insert(messages)
+          .values({
+            chatId: input.chatId,
+            senderId: input.senderId,
+            type: input.type ?? 'text',
+            body: input.body,
+            replyToMessageId: input.replyToMessageId ?? null,
+            forwardedFromChatId: input.forwardedFromChatId ?? null,
+            forwardedFromMessageId: input.forwardedFromMessageId ?? null,
+          })
+          .returning(messageSelection);
 
-      const row = rows[0];
+        const row = rows[0];
 
-      if (!row) {
-        throw new PersistenceException('PostgreSQL did not return the created message');
-      }
+        if (!row) {
+          throw new PersistenceException('PostgreSQL did not return the created message');
+        }
 
-      return this.mapper.toRecord(row);
+        await tx.update(chats).set({ updatedAt: new Date() }).where(eq(chats.id, input.chatId));
+
+        return this.mapper.toRecord(row);
+      });
     } catch (error) {
       if (error instanceof PersistenceException) {
         throw error;

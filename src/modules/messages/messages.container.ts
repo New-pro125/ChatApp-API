@@ -1,21 +1,31 @@
 import { Container } from 'inversify';
+import { MessagesRateLimiter } from '@/core/http/middleware/rate-limit.js';
+import { RequestScopeMiddleware } from '@/core/http/middleware/request-scope.js';
 import { PostgresChatRepository } from '@/modules/messages/data/postgres-chat.repository.js';
 import { PostgresChatMemberRepository } from '@/modules/messages/data/postgres-chat-member.repository.js';
 import { PostgresMessageRepository } from '@/modules/messages/data/postgres-message.repository.js';
+import { ChatService } from '@/modules/messages/logic/chat.service.js';
+import { MessageService } from '@/modules/messages/logic/message.service.js';
+import { MessagingPolicy } from '@/modules/messages/logic/messaging-policy.service.js';
 import type { ChatRepository } from '@/modules/messages/logic/ports/chat.repository.js';
 import type { ChatMemberRepository } from '@/modules/messages/logic/ports/chat-member.repository.js';
 import type { MessageRepository } from '@/modules/messages/logic/ports/message.repository.js';
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
+import { ChatController } from '@/modules/messages/web/chat.controller.js';
+import { MessageController } from '@/modules/messages/web/message.controller.js';
+import { MessagesRouter } from '@/modules/messages/web/routes/messages.router.js';
 
-/**
- * Child container for the messaging module.
- *
- * Unit 2.1 binds the data layer only; the module class, router, controllers,
- * and services are added in 2.2 once there are endpoints to serve.
- */
+/** Child container for the messaging module. */
 export class MessagesContainer extends Container {
   constructor(parent: Container) {
     super({ parent });
+
+    this.bind<RequestScopeMiddleware>(MESSAGES_TYPES.RequestScope).toConstantValue(
+      new RequestScopeMiddleware(this),
+    );
+    this.bind<MessagesRateLimiter>(MESSAGES_TYPES.MessagesRateLimiter)
+      .to(MessagesRateLimiter)
+      .inSingletonScope();
 
     this.bind<ChatRepository>(MESSAGES_TYPES.ChatRepository)
       .to(PostgresChatRepository)
@@ -26,5 +36,15 @@ export class MessagesContainer extends Container {
     this.bind<MessageRepository>(MESSAGES_TYPES.MessageRepository)
       .to(PostgresMessageRepository)
       .inSingletonScope();
+
+    this.bind<MessagingPolicy>(MESSAGES_TYPES.MessagingPolicy)
+      .to(MessagingPolicy)
+      .inSingletonScope();
+    this.bind<ChatService>(MESSAGES_TYPES.ChatService).to(ChatService).inSingletonScope();
+    this.bind<MessageService>(MESSAGES_TYPES.MessageService).to(MessageService).inSingletonScope();
+
+    this.bind<ChatController>(MESSAGES_TYPES.ChatController).to(ChatController);
+    this.bind<MessageController>(MESSAGES_TYPES.MessageController).to(MessageController);
+    this.bind<MessagesRouter>(MESSAGES_TYPES.MessagesRouter).to(MessagesRouter).inSingletonScope();
   }
 }

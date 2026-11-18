@@ -59,6 +59,8 @@ export class ApiDocumentBuilder {
         { name: 'MFA', description: 'TOTP multi-factor authentication' },
         { name: 'Password', description: 'Password reset via email OTP' },
         { name: 'OAuth', description: 'Third-party and SSO authentication' },
+        { name: 'Chats', description: 'Direct conversations and participants' },
+        { name: 'Messages', description: 'Text messages, history, edits, and forwards' },
       ],
       components: {
         securitySchemes: {

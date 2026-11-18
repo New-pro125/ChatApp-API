@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, or } from 'drizzle-orm';
 import { inject, injectable } from 'inversify';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import type { AppDatabase } from '@/core/database/database.provider.js';
@@ -42,6 +42,21 @@ export class PostgresUserBlockRepository implements UserBlockRepository {
     } catch (error) {
       throw new PersistenceException('Failed to unblock user', { cause: error });
     }
+  }
+
+  async isBlockedEitherWay(firstUserId: string, secondUserId: string): Promise<boolean> {
+    const rows = await this.db
+      .select({ id: userBlocks.id })
+      .from(userBlocks)
+      .where(
+        or(
+          and(eq(userBlocks.blockerId, firstUserId), eq(userBlocks.blockedId, secondUserId)),
+          and(eq(userBlocks.blockerId, secondUserId), eq(userBlocks.blockedId, firstUserId)),
+        ),
+      )
+      .limit(1);
+
+    return rows.length > 0;
   }
 
   async listByBlocker(blockerId: string): Promise<BlockedUserRecord[]> {

@@ -7,12 +7,13 @@ const errorCodes = Object.values(ErrorCode) as [ErrorCode, ...ErrorCode[]];
 
 export const paginationMetaSchema = z
   .object({
-    page: z.number().int().min(1),
-    pageSize: z.number().int().min(1),
-    total: z.number().int().min(0),
-    totalPages: z.number().int().min(0),
-    hasNextPage: z.boolean(),
-    hasPreviousPage: z.boolean(),
+    page: z.number().int().min(1).optional(),
+    pageSize: z.number().int().min(1).optional(),
+    total: z.number().int().min(0).optional(),
+    totalPages: z.number().int().min(0).optional(),
+    hasNextPage: z.boolean().optional(),
+    hasPreviousPage: z.boolean().optional(),
+    nextCursor: z.string().nullable().optional(),
   })
   .meta({ id: 'PaginationMeta' });
 

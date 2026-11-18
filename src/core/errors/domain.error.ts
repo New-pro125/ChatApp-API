@@ -261,3 +261,21 @@ export class CannotBlockSelfException extends DomainException {
     super(message, options);
   }
 }
+
+/** Either side of a conversation has blocked the other. */
+export class UserBlockedException extends DomainException {
+  readonly code = ErrorCode.USER_BLOCKED;
+
+  constructor(message = 'Messaging with this user is blocked', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}
+
+/** The caller is not a member of the chat they are trying to access. */
+export class NotChatMemberException extends DomainException {
+  readonly code = ErrorCode.NOT_CHAT_MEMBER;
+
+  constructor(message = 'You are not a member of this chat', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}

@@ -27,7 +27,7 @@ export interface CreateMessageInput {
 export interface ListMessagesQuery {
   limit: number;
   /** Return messages strictly older than this message id. */
-  beforeId?: string;
+  beforeId?: string | undefined;
 }
 
 export interface MessageRepository {

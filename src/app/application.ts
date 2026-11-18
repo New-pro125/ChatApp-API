@@ -19,6 +19,7 @@ import type { MetricsService } from '@/core/metrics/metrics.service.js';
 import type { AppModule } from '@/core/modules/app.module.js';
 import { AuthModule } from '@/modules/auth/auth.module.js';
 import { HealthModule } from '@/modules/health/health.module.js';
+import { MessagesModule } from '@/modules/messages/messages.module.js';
 import { StoriesModule } from '@/modules/stories/stories.module.js';
 
 export class Application {
@@ -89,6 +90,7 @@ export class Application {
       new HealthModule(container),
       new AuthModule(container, config),
       new StoriesModule(container),
+      new MessagesModule(container),
     ];
 
     if (config.docsEnabled) {

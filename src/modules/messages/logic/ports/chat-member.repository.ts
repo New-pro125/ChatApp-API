@@ -11,6 +11,9 @@ export interface ChatMemberRepository {
   /** Members of a chat, oldest membership first. */
   listByChat(chatId: string): Promise<ChatMemberRecord[]>;
 
+  /** Memberships for several chats, used to hydrate chat lists without N+1 queries. */
+  listByChats(chatIds: readonly string[]): Promise<ChatMemberRecord[]>;
+
   /** Returns whether a membership row was removed. */
   remove(chatId: string, userId: string): Promise<boolean>;
 }

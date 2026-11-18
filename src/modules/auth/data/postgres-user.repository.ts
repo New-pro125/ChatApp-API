@@ -1,10 +1,11 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { inject, injectable } from 'inversify';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import { PostgresErrorInspector } from '@/core/database/database.error-inspector.js';
 import type { AppDatabase } from '@/core/database/database.provider.js';
 import { users } from '@/core/database/schema/index.js';
 import { PersistenceException, UniqueConstraintException } from '@/core/errors/repository.error.js';
+import type { UserSummary } from '@/core/users/user-summary.reader.js';
 import { UserRecordMapper, userSelection } from '@/modules/auth/data/user.mapper.js';
 import type { UserRecord } from '@/modules/auth/logic/entities/user-record.js';
 import type {
@@ -32,6 +33,22 @@ export class PostgresUserRepository implements UserRepository {
     const row = rows[0];
 
     return row ? this.mapper.toRecord(row) : null;
+  }
+
+  findSummaries(userIds: readonly string[]): Promise<UserSummary[]> {
+    if (userIds.length === 0) {
+      return Promise.resolve([]);
+    }
+
+    return this.db
+      .select({
+        id: users.id,
+        username: users.username,
+        displayName: users.displayName,
+        avatarKey: users.avatarKey,
+      })
+      .from(users)
+      .where(inArray(users.id, [...userIds]));
   }
 
   async findByEmail(email: string): Promise<UserRecord | null> {

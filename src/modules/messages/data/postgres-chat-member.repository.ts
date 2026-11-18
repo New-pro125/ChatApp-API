@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { inject, injectable } from 'inversify';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import { PostgresErrorInspector } from '@/core/database/database.error-inspector.js';
@@ -78,6 +78,23 @@ export class PostgresChatMemberRepository implements ChatMemberRepository {
         .from(chatMembers)
         .where(eq(chatMembers.chatId, chatId))
         .orderBy(asc(chatMembers.joinedAt), asc(chatMembers.userId));
+
+      return rows.map((row) => this.mapper.toRecord(row));
+    } catch (error) {
+      throw new PersistenceException('Failed to list chat members', { cause: error });
+    }
+  }
+
+  async listByChats(chatIds: readonly string[]): Promise<ChatMemberRecord[]> {
+    if (chatIds.length === 0) {
+      return [];
+    }
+
+    try {
+      const rows = await this.db
+        .select(chatMemberSelection)
+        .from(chatMembers)
+        .where(inArray(chatMembers.chatId, [...chatIds]));
 
       return rows.map((row) => this.mapper.toRecord(row));
     } catch (error) {

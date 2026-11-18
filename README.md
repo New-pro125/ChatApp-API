@@ -205,6 +205,43 @@ not leaked; an unknown user also returns an empty list. `DELETE /api/stories/:id
 returns `204` for an owned story and `404` when the story is missing or belongs
 to someone else.
 
+### Messaging
+
+One-on-one messaging lives in the `messages` module and is mounted at
+`/api/chats`. All routes require a bearer token and a verified email; writes also
+use the shared `rl:messages:` bucket (120 requests per 15 minutes).
+
+| Method   | Path                                             | Description                                |
+| -------- | ------------------------------------------------ | ------------------------------------------ |
+| `POST`   | `/api/chats`                                     | Open (or retrieve) a direct chat           |
+| `GET`    | `/api/chats`                                     | List the caller's chats, most active first |
+| `POST`   | `/api/chats/:chatId/messages`                    | Send a text message                        |
+| `GET`    | `/api/chats/:chatId/messages`                    | List history with keyset pagination        |
+| `PATCH`  | `/api/chats/:chatId/messages/:messageId`         | Edit an owned message                      |
+| `DELETE` | `/api/chats/:chatId/messages/:messageId`         | Soft-delete an owned message               |
+| `POST`   | `/api/chats/:chatId/messages/:messageId/forward` | Forward a message into another chat        |
+
+`POST /api/chats` accepts `{ "participantId": "<uuid>" }`. It returns `201` for a
+new chat and `200` for the existing pair, and every chat response embeds public
+participant summaries (`userId`, `username`, `displayName`, `avatarKey`). Opening
+a chat with yourself returns `400`, an unknown participant returns `404`, and
+either side having blocked the other returns `403 USER_BLOCKED`.
+
+`POST /api/chats/:chatId/messages` accepts `{ "body": "...", "replyToMessageId":
+"<uuid>" }` with a body of 1–4096 characters. Replies must reference a message in
+the same chat. `GET` accepts `limit` (1–100, default 30) and an opaque `cursor`;
+history is newest first and `meta.pagination.nextCursor` is `null` on the last
+page. The cursor is the last returned uuidv7 message id, so several messages
+created in the same millisecond are never skipped.
+
+Only the sender can edit or delete a message. Deletes are tombstones: the row
+stays in history with `body: null` and a `deletedAt` timestamp. Forwarding copies
+the body into a target chat the caller belongs to and records
+`forwardedFromChatId` and `forwardedFromMessageId`. Non-members receive `403
+NOT_CHAT_MEMBER` on every chat-scoped operation. Sending and forwarding bump the
+chat's `updated_at`, so a newly active conversation moves to the top of
+`GET /api/chats`.
+
 ### Two-factor authentication
 
 | Method | Path                                      | Description                                           |
@@ -405,7 +442,8 @@ per 15 minutes per client IP, and profile updates use a separate `rl:profile:`
 bucket (30 requests per 15 minutes) so editing a profile never consumes the
 login or registration quota. Redis store errors are treated as server errors
 rather than silently allowing requests. Story creation uses its own `rl:stories:`
-bucket (30 requests per 15 minutes).
+bucket (30 requests per 15 minutes), and messaging writes use `rl:messages:`
+(120 requests per 15 minutes).
 
 ## Account lockout
 
@@ -457,7 +495,7 @@ and `METRICS_TOKEN` control the Prometheus endpoint. The `HTTP_*`, `TRUST_PROXY`
 trust, the CORS allowlist, and readiness caching. `SMTP_TIMEOUT_MS` bounds SMTP
 connection, greeting, and socket waits. See `.env.example` for the full list of
 database pool, HTTP hardening, auth hardening, OTP, email verification, stories,
-captcha, MFA, SMTP, OAuth, SSO, and Docker Compose options.
+messaging, captcha, MFA, SMTP, OAuth, SSO, and Docker Compose options.
 
 ## Scripts
 
