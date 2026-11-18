@@ -45,6 +45,10 @@ const STATUS_BY_DOMAIN_CODE: Partial<Record<ErrorCode, number>> = {
   [ErrorCode.PROVIDER_DISABLED]: 404,
   [ErrorCode.REFRESH_TOKEN_INVALID]: 401,
   [ErrorCode.OAUTH_GRANT_INVALID]: 401,
+  [ErrorCode.E2EE_DEVICE_CONFLICT]: 409,
+  [ErrorCode.E2EE_DEVICE_NOT_FOUND]: 404,
+  [ErrorCode.E2EE_PREKEY_EXHAUSTED]: 409,
+  [ErrorCode.E2EE_NOT_ALLOWED]: 403,
 };
 
 /**
