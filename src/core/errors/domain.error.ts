@@ -261,3 +261,73 @@ export class CannotBlockSelfException extends DomainException {
     super(message, options);
   }
 }
+
+/** Either side of a conversation has blocked the other. */
+export class UserBlockedException extends DomainException {
+  readonly code = ErrorCode.USER_BLOCKED;
+
+  constructor(message = 'Messaging with this user is blocked', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}
+
+/** The caller is not a member of the chat they are trying to access. */
+export class NotChatMemberException extends DomainException {
+  readonly code = ErrorCode.NOT_CHAT_MEMBER;
+
+  constructor(message = 'You are not a member of this chat', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}
+
+export class InvalidE2eeKeyException extends DomainException {
+  readonly code = ErrorCode.VALIDATION_ERROR;
+
+  constructor(message = 'Invalid E2EE key material', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}
+
+export class E2eeDeviceConflictException extends DomainException {
+  readonly code = ErrorCode.E2EE_DEVICE_CONFLICT;
+
+  constructor(message = 'This device is already registered', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}
+
+export class E2eeDeviceNotFoundException extends DomainException {
+  readonly code = ErrorCode.E2EE_DEVICE_NOT_FOUND;
+
+  constructor(message = 'E2EE device not found', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}
+
+/** A one-time prekey id already exists for the device. */
+export class E2eePrekeyConflictException extends DomainException {
+  readonly code = ErrorCode.CONFLICT;
+
+  constructor(message = 'One-time prekey id is already in use', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}
+
+export class E2eePrekeyExhaustedException extends DomainException {
+  readonly code = ErrorCode.E2EE_PREKEY_EXHAUSTED;
+
+  constructor(message = 'No one-time prekeys remain for this device', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}
+
+export class E2eeNotAllowedException extends DomainException {
+  readonly code = ErrorCode.E2EE_NOT_ALLOWED;
+
+  constructor(
+    message = 'This operation is not allowed for secret messages',
+    options?: AppErrorOptions,
+  ) {
+    super(message, options);
+  }
+}

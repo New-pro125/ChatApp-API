@@ -11,4 +11,6 @@ export interface UserBlockRepository {
   block(blockerId: string, blockedId: string): Promise<void>;
   unblock(blockerId: string, blockedId: string): Promise<void>;
   listByBlocker(blockerId: string): Promise<BlockedUserRecord[]>;
+  /** True when either user has blocked the other. */
+  isBlockedEitherWay(firstUserId: string, secondUserId: string): Promise<boolean>;
 }

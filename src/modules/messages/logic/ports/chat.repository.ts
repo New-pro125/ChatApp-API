@@ -11,6 +11,12 @@ export interface CreateChatInput {
 export interface ChatRepository {
   create(input: CreateChatInput): Promise<ChatRecord>;
 
+  /**
+   * Creates a chat and all initial memberships in one transaction, so a
+   * partial chat can never be observed if a member insert fails.
+   */
+  createWithMembers(input: CreateChatInput, memberIds: readonly string[]): Promise<ChatRecord>;
+
   findById(id: string): Promise<ChatRecord | null>;
 
   /** Looks up the single direct chat for a deterministic pair key. */

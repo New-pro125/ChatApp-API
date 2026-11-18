@@ -92,3 +92,29 @@ export class StoryRateLimiter extends RedisRateLimiter {
     });
   }
 }
+
+/** Limits chat and message writes across all messaging endpoints. */
+@injectable()
+export class MessagesRateLimiter extends RedisRateLimiter {
+  constructor(@inject(CORE_TYPES.RedisClient) client: RedisClient) {
+    super(client, {
+      windowMs: FIFTEEN_MINUTES_MS,
+      limit: 120,
+      prefix: 'rl:messages:',
+      message: 'Too many messaging actions. Try again later.',
+    });
+  }
+}
+
+/** Limits device registration, rotation, and bundle fetches. */
+@injectable()
+export class E2eeRateLimiter extends RedisRateLimiter {
+  constructor(@inject(CORE_TYPES.RedisClient) client: RedisClient) {
+    super(client, {
+      windowMs: FIFTEEN_MINUTES_MS,
+      limit: 30,
+      prefix: 'rl:e2ee:',
+      message: 'Too many E2EE key operations. Try again later.',
+    });
+  }
+}

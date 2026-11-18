@@ -2,13 +2,18 @@ import type { Response } from 'express';
 import { injectable } from 'inversify';
 import type { ErrorCode } from '@/core/errors/error-code.js';
 
+/**
+ * Pagination metadata. Page-based fields describe an offset page; `nextCursor`
+ * is set by keyset endpoints and is opaque to the client.
+ */
 export interface PaginationMeta {
-  page: number;
-  pageSize: number;
-  total: number;
-  totalPages: number;
-  hasNextPage: boolean;
-  hasPreviousPage: boolean;
+  page?: number;
+  pageSize?: number;
+  total?: number;
+  totalPages?: number;
+  hasNextPage?: boolean;
+  hasPreviousPage?: boolean;
+  nextCursor?: string | null;
 }
 
 export interface ResponseMeta {
@@ -99,6 +104,19 @@ export class ApiResponse {
     return this.ok(res, items, {
       ...(options.message === undefined ? {} : { message: options.message }),
       pagination: this.createPaginationMeta(pagination),
+    });
+  }
+
+  /** Sends a keyset page with an opaque `nextCursor` (null on the last page). */
+  cursor<T>(
+    res: Response,
+    items: T[],
+    nextCursor: string | null,
+    options: SuccessOptions = {},
+  ): Response {
+    return this.ok(res, items, {
+      ...(options.message === undefined ? {} : { message: options.message }),
+      pagination: { nextCursor },
     });
   }
 

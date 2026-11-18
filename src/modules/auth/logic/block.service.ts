@@ -1,5 +1,6 @@
 import { inject, injectable } from 'inversify';
 import { CannotBlockSelfException, UserNotFoundException } from '@/core/errors/domain.error.js';
+import type { UserBlockReader } from '@/core/privacy/user-block.reader.js';
 import { AUTH_TYPES } from '@/modules/auth/auth.types.js';
 import type { BlockedUserRecord } from '@/modules/auth/logic/entities/block-record.js';
 import type { UserRepository } from '@/modules/auth/logic/ports/user.repository.js';
@@ -13,7 +14,7 @@ import type { UserBlockRepository } from '@/modules/auth/logic/ports/user-block.
  * already existed. Blocking is directional: each side manages its own list.
  */
 @injectable()
-export class BlockService {
+export class BlockService implements UserBlockReader {
   constructor(
     @inject(AUTH_TYPES.UserBlockRepository) private readonly blocks: UserBlockRepository,
     @inject(AUTH_TYPES.UserRepository) private readonly users: UserRepository,
@@ -39,5 +40,9 @@ export class BlockService {
 
   list(blockerId: string): Promise<BlockedUserRecord[]> {
     return this.blocks.listByBlocker(blockerId);
+  }
+
+  isBlockedBetween(firstUserId: string, secondUserId: string): Promise<boolean> {
+    return this.blocks.isBlockedEitherWay(firstUserId, secondUserId);
   }
 }

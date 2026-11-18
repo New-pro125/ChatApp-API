@@ -25,6 +25,8 @@ const STATUS_BY_DOMAIN_CODE: Partial<Record<ErrorCode, number>> = {
   [ErrorCode.CONFLICT]: 409,
   [ErrorCode.ACCOUNT_LOCKED]: 423,
   [ErrorCode.EMAIL_NOT_VERIFIED]: 403,
+  [ErrorCode.USER_BLOCKED]: 403,
+  [ErrorCode.NOT_CHAT_MEMBER]: 403,
   [ErrorCode.CAPTCHA_REQUIRED]: 400,
   [ErrorCode.CAPTCHA_INVALID]: 400,
   [ErrorCode.CAPTCHA_UNAVAILABLE]: 503,
@@ -43,6 +45,10 @@ const STATUS_BY_DOMAIN_CODE: Partial<Record<ErrorCode, number>> = {
   [ErrorCode.PROVIDER_DISABLED]: 404,
   [ErrorCode.REFRESH_TOKEN_INVALID]: 401,
   [ErrorCode.OAUTH_GRANT_INVALID]: 401,
+  [ErrorCode.E2EE_DEVICE_CONFLICT]: 409,
+  [ErrorCode.E2EE_DEVICE_NOT_FOUND]: 404,
+  [ErrorCode.E2EE_PREKEY_EXHAUSTED]: 409,
+  [ErrorCode.E2EE_NOT_ALLOWED]: 403,
 };
 
 /**

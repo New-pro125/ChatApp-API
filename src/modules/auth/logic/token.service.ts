@@ -208,7 +208,13 @@ export class TokenService {
       userAgent: device.userAgent,
     });
 
-    const access = await this.accessTokens.sign(user.id, user.sessionVersion, record.id, now);
+    const access = await this.accessTokens.sign(
+      user.id,
+      user.sessionVersion,
+      record.id,
+      familyId,
+      now,
+    );
 
     return {
       accessToken: access.token,

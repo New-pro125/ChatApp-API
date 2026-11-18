@@ -1,3 +1,4 @@
+import type { UserSummary } from '@/core/users/user-summary.reader.js';
 import type { UserRecord } from '@/modules/auth/logic/entities/user-record.js';
 
 export interface CreateUserInput {
@@ -16,6 +17,8 @@ export interface UpdateProfileInput {
 
 export interface UserRepository {
   findById(id: string): Promise<UserRecord | null>;
+  /** Public display fields for a set of users, in no particular order. */
+  findSummaries(userIds: readonly string[]): Promise<UserSummary[]>;
   findByEmail(email: string): Promise<UserRecord | null>;
   create(input: CreateUserInput): Promise<UserRecord>;
   updateProfile(id: string, input: UpdateProfileInput): Promise<UserRecord | null>;
