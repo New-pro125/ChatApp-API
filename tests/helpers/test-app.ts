@@ -46,6 +46,8 @@ export class TestApp {
         stories,
         user_blocks,
         user_privacy_settings,
+        e2ee_prekeys,
+        e2ee_devices,
         users
       CASCADE;
     `);
