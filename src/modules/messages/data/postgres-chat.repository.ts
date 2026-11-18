@@ -61,6 +61,54 @@ export class PostgresChatRepository implements ChatRepository {
     }
   }
 
+  async createWithMembers(
+    input: CreateChatInput,
+    memberIds: readonly string[],
+  ): Promise<ChatRecord> {
+    try {
+      return await this.db.transaction(async (tx) => {
+        const rows = await tx
+          .insert(chats)
+          .values({
+            type: input.type,
+            title: input.title,
+            directKey: input.directKey,
+            createdBy: input.createdBy,
+          })
+          .returning(chatSelection);
+
+        const row = rows[0];
+
+        if (!row) {
+          throw new PersistenceException('PostgreSQL did not return the created chat');
+        }
+
+        const uniqueMemberIds = [...new Set(memberIds)];
+
+        if (uniqueMemberIds.length > 0) {
+          await tx
+            .insert(chatMembers)
+            .values(uniqueMemberIds.map((userId) => ({ chatId: row.id, userId })));
+        }
+
+        return this.mapper.toRecord(row);
+      });
+    } catch (error) {
+      if (error instanceof PersistenceException) {
+        throw error;
+      }
+
+      if (this.inspector.isUniqueViolation(error)) {
+        throw new UniqueConstraintException(
+          this.inspector.constraintName(error) ?? 'chats_direct_key_unique',
+          { cause: error },
+        );
+      }
+
+      throw new PersistenceException('Failed to create chat with members', { cause: error });
+    }
+  }
+
   async findById(id: string): Promise<ChatRecord | null> {
     try {
       const rows = await this.db.select(chatSelection).from(chats).where(eq(chats.id, id)).limit(1);

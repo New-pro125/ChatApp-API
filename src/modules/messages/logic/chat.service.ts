@@ -82,16 +82,9 @@ export class ChatService {
       return { view: await this.toView(existing), created: false };
     }
 
-    const chat = await this.chats.create({
-      type: 'secret',
-      title: null,
-      directKey: secretKey,
-      createdBy: creatorId,
-    });
-    await this.members.add(chat.id, creatorId);
-    await this.members.add(chat.id, participantId);
+    const created = await this.createSecretChat(creatorId, participantId, secretKey);
 
-    return { view: await this.toView(chat), created: true };
+    return { view: await this.toView(created.chat), created: created.created };
   }
 
   async listForUser(userId: string): Promise<ChatView[]> {
@@ -140,6 +133,43 @@ export class ChatService {
 
       await this.members.add(chat.id, creatorId);
       await this.members.add(chat.id, participantId);
+
+      return { chat, created: true };
+    } catch (error) {
+      if (!(error instanceof UniqueConstraintException)) {
+        throw error;
+      }
+
+      const winner = await this.chats.findDirectByKey(directKey);
+
+      if (!winner) {
+        throw error;
+      }
+
+      return { chat: winner, created: false };
+    }
+  }
+
+  /**
+   * Creates the secret chat and both memberships in one transaction. If a
+   * concurrent open wins the unique direct-key race, the winning chat is
+   * refetched so both callers receive the same usable two-member chat.
+   */
+  private async createSecretChat(
+    creatorId: string,
+    participantId: string,
+    directKey: string,
+  ): Promise<{ chat: ChatRecord; created: boolean }> {
+    try {
+      const chat = await this.chats.createWithMembers(
+        {
+          type: 'secret',
+          title: null,
+          directKey,
+          createdBy: creatorId,
+        },
+        [creatorId, participantId],
+      );
 
       return { chat, created: true };
     } catch (error) {
