@@ -13,13 +13,20 @@ export interface MediaObjectRepository {
     id: string,
     ownerUserId: string,
     sha256: string | null,
+    versionId: string | null,
   ): Promise<MediaObjectRecord | null>;
   transitionToQuarantined(
     id: string,
     ownerUserId: string,
     signature: string,
     error: string | null,
+    versionId: string | null,
   ): Promise<MediaObjectRecord | null>;
-  markFailed(id: string, ownerUserId: string, error: string): Promise<MediaObjectRecord | null>;
+  markFailed(
+    id: string,
+    ownerUserId: string,
+    error: string,
+    versionId: string | null,
+  ): Promise<MediaObjectRecord | null>;
   deleteOwned(id: string, ownerUserId: string): Promise<boolean>;
 }

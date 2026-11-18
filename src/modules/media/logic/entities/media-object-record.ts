@@ -7,6 +7,7 @@ export class MediaObjectRecord {
     readonly id: string,
     readonly ownerUserId: string,
     readonly objectKey: string,
+    readonly versionId: string | null,
     readonly contentType: string,
     readonly sizeBytes: number,
     readonly sha256: string | null,

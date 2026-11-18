@@ -27,6 +27,7 @@ export const mediaObjects = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     objectKey: text('object_key').notNull(),
+    versionId: text('version_id'),
     contentType: text('content_type').notNull(),
     sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
     sha256: text('sha256'),

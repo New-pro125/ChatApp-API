@@ -14,12 +14,16 @@ export interface PresignedDownload {
 export interface ObjectMetadata {
   contentType: string;
   sizeBytes: number;
+  /** Null when the bucket does not provide object versioning. */
+  versionId: string | null;
 }
 
 export interface ObjectStore {
   presignPut(objectKey: string, contentType: string, sizeBytes: number): Promise<PresignedUpload>;
-  presignGet(objectKey: string): Promise<PresignedDownload>;
+  /** A null version id omits the VersionId query parameter for versionless buckets. */
+  presignGet(objectKey: string, versionId: string | null): Promise<PresignedDownload>;
   head(objectKey: string): Promise<ObjectMetadata | null>;
-  getStream(objectKey: string): Promise<Readable>;
+  /** A null version id omits VersionId for versionless buckets. */
+  getStream(objectKey: string, versionId: string | null): Promise<Readable>;
   delete(objectKey: string): Promise<void>;
 }

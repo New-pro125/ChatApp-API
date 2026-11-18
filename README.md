@@ -251,6 +251,19 @@ non-pending object returns `409 MEDIA_NOT_READY`. Setting
 `MEDIA_SCAN_REQUIRED=false` explicitly skips scanning and yields a ready object
 with a null hash; never do this in production.
 
+S3 object versioning is required on `MEDIA_BUCKET` in production. Finalize reads
+the version id from S3 HEAD, scans exactly that version, stores it in
+`media_objects.version_id`, and signs both the finalize response and later GET
+URLs with the same `VersionId`. A client that reuses its presigned PUT to
+overwrite the key cannot change the bytes served by a URL issued for the
+scanned version. The local `storage-init` service enables bucket versioning;
+buckets without versioning yield a null version id and the API falls back to
+unpinned reads, which does not provide this guarantee.
+
+An unrecoverable storage or metadata error marks the row `failed` and surfaces
+as `500 INTERNAL_ERROR` through the shared error model. Only a scanner outage
+leaves the row `pending` for retry with `503 MEDIA_SCAN_UNAVAILABLE`.
+
 Cross-user access always returns `404 NOT_FOUND` without revealing object keys
 or download URLs. Objects are deleted from storage before their database rows,
 so a storage failure leaves the row available for retry.
@@ -554,8 +567,8 @@ messaging, captcha, MFA, SMTP, OAuth, SSO, and Docker Compose options.
 | `MEDIA_BUCKET`                | `messenger-media`                                                                                                         | Private S3 bucket that holds media objects.          |
 | `MEDIA_REGION`                | `us-east-1`                                                                                                               | Region used to sign S3 requests.                     |
 | `MEDIA_ENDPOINT`              | `http://localhost:9000`                                                                                                   | Host-reachable endpoint embedded in presigned URLs.  |
-| `MEDIA_ACCESS_KEY_ID`         | `minioadmin`                                                                                                              | S3 access key id.                                    |
-| `MEDIA_SECRET_ACCESS_KEY`     | `minioadmin`                                                                                                              | S3 secret access key.                                |
+| `MEDIA_ACCESS_KEY_ID`         | required (no default)                                                                                                     | S3 access key id supplied by the deployment.         |
+| `MEDIA_SECRET_ACCESS_KEY`     | required (no default)                                                                                                     | S3 secret access key supplied by the deployment.     |
 | `MEDIA_FORCE_PATH_STYLE`      | `true`                                                                                                                    | Use path-style S3 URLs (required by MinIO).          |
 | `MEDIA_MAX_BYTES`             | `52428800`                                                                                                                | Largest accepted upload, in bytes (50 MiB).          |
 | `MEDIA_ALLOWED_CONTENT_TYPES` | `image/jpeg,image/png,image/gif,image/webp,video/mp4,audio/mpeg,application/pdf,application/zip,application/octet-stream` | Comma-separated MIME allowlist for uploads.          |

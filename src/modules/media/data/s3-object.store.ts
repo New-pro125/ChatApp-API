@@ -76,11 +76,15 @@ export class S3ObjectStore implements ObjectStore {
     }
   }
 
-  async presignGet(objectKey: string): Promise<PresignedDownload> {
+  async presignGet(objectKey: string, versionId: string | null): Promise<PresignedDownload> {
     const options = this.options.get(this.bucket, objectKey, this.ttlSeconds);
 
     try {
-      const command = new GetObjectCommand({ Bucket: options.bucket, Key: options.key });
+      const command = new GetObjectCommand({
+        Bucket: options.bucket,
+        Key: options.key,
+        VersionId: versionId ?? undefined,
+      });
       const url = await getSignedUrl(this.client, command, { expiresIn: options.expiresIn });
 
       return { url, expiresAt: options.expiresAt };
@@ -98,6 +102,7 @@ export class S3ObjectStore implements ObjectStore {
       return {
         contentType: result.ContentType ?? '',
         sizeBytes: result.ContentLength ?? 0,
+        versionId: result.VersionId ?? null,
       };
     } catch (error) {
       if (this.isMissingObject(error)) {
@@ -108,10 +113,14 @@ export class S3ObjectStore implements ObjectStore {
     }
   }
 
-  async getStream(objectKey: string): Promise<Readable> {
+  async getStream(objectKey: string, versionId: string | null): Promise<Readable> {
     try {
       const result = await this.client.send(
-        new GetObjectCommand({ Bucket: this.bucket, Key: objectKey }),
+        new GetObjectCommand({
+          Bucket: this.bucket,
+          Key: objectKey,
+          VersionId: versionId ?? undefined,
+        }),
       );
 
       if (!result.Body) {

@@ -10,7 +10,7 @@ import {
   MediaNotReadyException,
   MediaScanUnavailableException,
 } from '@/core/errors/domain.error.js';
-import { VirusScannerException } from '@/core/errors/repository.error.js';
+import { ObjectStoreException, VirusScannerException } from '@/core/errors/repository.error.js';
 import type { MediaObjectRecord } from '@/modules/media/logic/entities/media-object-record.js';
 import type { MediaObjectRepository } from '@/modules/media/logic/ports/media-object.repository.js';
 import type {
@@ -87,11 +87,14 @@ export class MediaService {
       throw new MediaNotFoundException('Uploaded object was not found');
     }
 
+    const versionId = head.versionId;
+
     if (head.contentType !== record.contentType || head.sizeBytes !== record.sizeBytes) {
       await this.objects.markFailed(
         mediaId,
         userId,
         'Uploaded object metadata does not match ticket',
+        versionId,
       );
       throw new InvalidMediaInputException('Uploaded object metadata does not match the ticket');
     }
@@ -99,17 +102,32 @@ export class MediaService {
     let sha256: string | null = null;
 
     if (this.config.media.scanRequired) {
-      const outcome = await this.scanWithHash(record.objectKey);
+      let outcome: ScanOutcome;
+
+      try {
+        outcome = await this.scanWithHash(record.objectKey, versionId);
+      } catch (error) {
+        if (error instanceof ObjectStoreException) {
+          await this.failStorageScan(mediaId, userId, versionId);
+        }
+        throw error;
+      }
 
       if (outcome.verdict === 'infected') {
-        await this.objects.transitionToQuarantined(mediaId, userId, outcome.signature, null);
+        await this.objects.transitionToQuarantined(
+          mediaId,
+          userId,
+          outcome.signature,
+          null,
+          versionId,
+        );
         throw new MediaInfectedException();
       }
 
       sha256 = outcome.sha256;
     }
 
-    const ready = await this.objects.transitionToReady(mediaId, userId, sha256);
+    const ready = await this.objects.transitionToReady(mediaId, userId, sha256, versionId);
 
     if (ready === null) {
       throw new MediaNotReadyException();
@@ -139,7 +157,7 @@ export class MediaService {
     }
   }
 
-  private async scanWithHash(objectKey: string): Promise<ScanOutcome> {
+  private async scanWithHash(objectKey: string, versionId: string | null): Promise<ScanOutcome> {
     const hash: Hash = createHash('sha256');
     const hashing = new Transform({
       transform(chunk: Buffer, _encoding, callback) {
@@ -147,12 +165,21 @@ export class MediaService {
         callback(null, chunk);
       },
     });
-    const source = await this.store.getStream(objectKey);
-    source.on('error', (error) => hashing.destroy(error));
+    const source = await this.store.getStream(objectKey, versionId);
+    let storageFailure = false;
+
+    source.on('error', () => {
+      storageFailure = true;
+      hashing.destroy(this.storageReadFailure());
+    });
     source.pipe(hashing);
 
     try {
       const result = await this.scanner.scan(hashing);
+
+      if (storageFailure) {
+        throw this.storageReadFailure();
+      }
 
       if (result.verdict === 'infected') {
         return { verdict: 'infected', signature: result.signature };
@@ -160,6 +187,10 @@ export class MediaService {
 
       return { verdict: 'clean', sha256: hash.digest('hex') };
     } catch (error) {
+      if (storageFailure || error instanceof ObjectStoreException) {
+        throw this.storageReadFailure();
+      }
+
       if (error instanceof VirusScannerException) {
         throw new MediaScanUnavailableException(undefined, { cause: error });
       }
@@ -168,6 +199,27 @@ export class MediaService {
     } finally {
       source.destroy();
       hashing.destroy();
+    }
+  }
+
+  private storageReadFailure(): ObjectStoreException {
+    return new ObjectStoreException('Uploaded object could not be read for scanning');
+  }
+
+  private async failStorageScan(
+    mediaId: string,
+    userId: string,
+    versionId: string | null,
+  ): Promise<void> {
+    try {
+      await this.objects.markFailed(
+        mediaId,
+        userId,
+        'Uploaded object could not be read for scanning',
+        versionId,
+      );
+    } catch {
+      // A persistence failure must not replace the storage failure classification.
     }
   }
 
@@ -182,7 +234,7 @@ export class MediaService {
   }
 
   private async toDownloadTicket(record: MediaObjectRecord): Promise<DownloadTicket> {
-    const download = await this.store.presignGet(record.objectKey);
+    const download = await this.store.presignGet(record.objectKey, record.versionId);
 
     return {
       mediaId: record.id,

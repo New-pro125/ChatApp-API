@@ -94,10 +94,12 @@ export class PostgresMediaObjectRepository implements MediaObjectRepository {
     id: string,
     ownerUserId: string,
     sha256: string | null,
+    versionId: string | null,
   ): Promise<MediaObjectRecord | null> {
     return this.transition(id, ownerUserId, {
       status: 'ready',
       sha256,
+      versionId,
       finalizedAt: new Date(),
       scanError: null,
     });
@@ -108,19 +110,27 @@ export class PostgresMediaObjectRepository implements MediaObjectRepository {
     ownerUserId: string,
     signature: string,
     error: string | null,
+    versionId: string | null,
   ): Promise<MediaObjectRecord | null> {
     return this.transition(id, ownerUserId, {
       status: 'quarantined',
       scanSignature: signature.slice(0, 512),
       scanError: error === null ? null : error.slice(0, 512),
+      versionId,
       finalizedAt: new Date(),
     });
   }
 
-  markFailed(id: string, ownerUserId: string, error: string): Promise<MediaObjectRecord | null> {
+  markFailed(
+    id: string,
+    ownerUserId: string,
+    error: string,
+    versionId: string | null,
+  ): Promise<MediaObjectRecord | null> {
     return this.transition(id, ownerUserId, {
       status: 'failed',
       scanError: error.slice(0, 512),
+      versionId,
     });
   }
 
@@ -143,6 +153,7 @@ export class PostgresMediaObjectRepository implements MediaObjectRepository {
     values: Partial<{
       status: 'ready' | 'quarantined' | 'failed';
       sha256: string | null;
+      versionId: string | null;
       scanSignature: string;
       scanError: string | null;
       finalizedAt: Date;

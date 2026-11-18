@@ -84,6 +84,42 @@ describe('Media API', () => {
     );
   });
 
+  it('keeps serving the scanned bytes after the presigned PUT is reused', async () => {
+    const { header } = await verified('media-api-version@example.com');
+    const ticket = await staged(header);
+
+    const finalized = expectSuccess<DownloadTicketResponse>(
+      await app.request.post(`/api/media/${ticket.mediaId}/finalize`).set(header),
+      200,
+    );
+
+    const stored = await app.pool.query('SELECT version_id FROM media_objects WHERE id = $1', [
+      ticket.mediaId,
+    ]);
+    const versionId = stored.rows[0]?.version_id;
+    expect(typeof versionId).toBe('string');
+    expect(new URL(finalized.downloadUrl).searchParams.get('versionId')).toBe(versionId);
+
+    // Same presigned PUT, same signed Content-Length, different bytes: the attack
+    // that the scanned-version pin must defeat.
+    const overwritten = Buffer.from(BYTES);
+    overwritten.write('EVIL', 10, 'ascii');
+    await media.put(ticket, overwritten, 'image/png');
+
+    const issuedResponse = await fetch(finalized.downloadUrl);
+    expect(issuedResponse.status).toBe(200);
+    expect(Buffer.from(await issuedResponse.arrayBuffer())).toEqual(BYTES);
+
+    const refreshed = expectSuccess<DownloadTicketResponse>(
+      await app.request.get(`/api/media/${ticket.mediaId}`).set(header),
+      200,
+    );
+    expect(new URL(refreshed.downloadUrl).searchParams.get('versionId')).toBe(versionId);
+    const refreshedResponse = await fetch(refreshed.downloadUrl);
+    expect(refreshedResponse.status).toBe(200);
+    expect(Buffer.from(await refreshedResponse.arrayBuffer())).toEqual(BYTES);
+  });
+
   it('rejects invalid content types and oversized requests', async () => {
     const { header } = await verified('media-api-validation@example.com');
 
@@ -187,10 +223,11 @@ describe('Media API', () => {
       'VALIDATION_ERROR',
     );
 
-    const row = await app.pool.query('SELECT status FROM media_objects WHERE id = $1', [
+    const row = await app.pool.query('SELECT status, version_id FROM media_objects WHERE id = $1', [
       ticket.mediaId,
     ]);
     expect(row.rows[0]?.status).toBe('failed');
+    expect(typeof row.rows[0]?.version_id).toBe('string');
   });
 
   it('quarantines an infected object without issuing a download URL', async () => {
