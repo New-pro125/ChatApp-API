@@ -96,4 +96,53 @@ describe('secret chats', () => {
       await app.close();
     }
   });
+
+  it('rejects forwarding plaintext into a secret chat', async () => {
+    const app = await TestApp.create();
+
+    try {
+      await app.clearDatabase();
+      const fixture = new MessagingApiFixture(app);
+      const alice = await fixture.verifiedUser('Alice Forward');
+      const bob = await fixture.verifiedUser('Bob Forward');
+
+      for (const user of [alice, bob]) {
+        const response = await app.request
+          .post('/api/e2ee/devices')
+          .set(user.headers)
+          .send(makeE2eeRegistration(2));
+        expect(response.status).toBe(201);
+      }
+
+      const normalChatId = await fixture.openDirectChat(bob.id, alice.headers);
+      const sent = await app.request
+        .post(`/api/chats/${normalChatId}/messages`)
+        .set(alice.headers)
+        .send({ body: 'plaintext' });
+      expect(sent.status).toBe(201);
+      const messageId = sent.body.data.id as string;
+
+      const opened = await app.request
+        .post('/api/chats/secret')
+        .set(alice.headers)
+        .send({ participantId: bob.id });
+      expect(opened.status).toBe(201);
+      const secretChatId = opened.body.data.id as string;
+
+      const forward = await app.request
+        .post(`/api/chats/${normalChatId}/messages/${messageId}/forward`)
+        .set(alice.headers)
+        .send({ targetChatId: secretChatId });
+      expect(forward.status).toBe(403);
+      expect(forward.body.error.code).toBe('E2EE_NOT_ALLOWED');
+
+      const rows = await app.pool.query<{ body: string | null }>(
+        `select body from messages where chat_id = $1`,
+        [secretChatId],
+      );
+      expect(rows.rows).toHaveLength(0);
+    } finally {
+      await app.close();
+    }
+  });
 });

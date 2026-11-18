@@ -161,6 +161,7 @@ export class MessageService {
     targetChatId: string,
   ): Promise<MessageRecord> {
     await this.rejectSecretChat(sourceChatId);
+    await this.rejectSecretChat(targetChatId);
     await this.policy.requireMember(sourceChatId, userId);
     await this.policy.requireMember(targetChatId, userId);
     await this.policy.assertChatUnblocked(sourceChatId, userId);
