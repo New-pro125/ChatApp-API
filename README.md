@@ -517,6 +517,12 @@ npm run db:studio    # open Drizzle Studio (development only)
 npm run db:reset     # drop local schemas and rebuild from migrations
 ```
 
+> **Deploying migration `0009_young_human_fly`:** it alters the partitioned
+> `messages` table, so PostgreSQL takes an `ACCESS EXCLUSIVE` lock that applies
+> to every partition. Apply it in a maintenance window, or set a short
+> `lock_timeout` (for example `SET lock_timeout = '5s'`) and retry so the DDL
+> does not queue behind long-running reads and block new queries.
+
 ## Docker
 
 `Dockerfile` is retained for production images. Compose provides the backing
