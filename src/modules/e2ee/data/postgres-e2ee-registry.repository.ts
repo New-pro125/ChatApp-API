@@ -8,12 +8,23 @@ import { E2eeDeviceConflictException } from '@/core/errors/domain.error.js';
 import { PersistenceException, UniqueConstraintException } from '@/core/errors/repository.error.js';
 import { E2eeMapper } from '@/modules/e2ee/data/e2ee.mapper.js';
 import type { E2eeDeviceRecord } from '@/modules/e2ee/logic/entities/e2ee-device-record.js';
-import type { E2eePrekeyRecord } from '@/modules/e2ee/logic/entities/e2ee-prekey-record.js';
 import type {
   CreateE2eeDeviceInput,
+  E2eeBundleRecord,
   E2eeRegistryRepository,
 } from '@/modules/e2ee/logic/ports/e2ee-registry.repository.js';
 
+const PREKEY_PRIMARY_KEY = 'e2ee_prekeys_pkey';
+
+/**
+ * PostgreSQL registry for public E2EE device key material.
+ *
+ * Device rows are locked (`FOR UPDATE`) before their prekeys are touched so
+ * bundle consumption, rotation, and replenishment serialize per device. All
+ * unique violations are classified by constraint name: prekey id collisions
+ * become `UniqueConstraintException` for the service to translate, while
+ * device-level collisions stay `E2eeDeviceConflictException`.
+ */
 @injectable()
 export class PostgresE2eeRegistryRepository implements E2eeRegistryRepository {
   private readonly inspector = new PostgresErrorInspector();
@@ -58,7 +69,7 @@ export class PostgresE2eeRegistryRepository implements E2eeRegistryRepository {
       }
 
       if (this.inspector.isUniqueViolation(error)) {
-        throw new E2eeDeviceConflictException();
+        throw this.uniqueViolation(error);
       }
 
       throw new PersistenceException('Failed to register E2EE device', { cause: error });
@@ -131,14 +142,12 @@ export class PostgresE2eeRegistryRepository implements E2eeRegistryRepository {
         return this.mapper.device(row);
       });
     } catch (error) {
-      if (error instanceof E2eeDeviceConflictException) {
+      if (error instanceof E2eeDeviceConflictException || error instanceof PersistenceException) {
         throw error;
       }
 
       if (this.inspector.isUniqueViolation(error)) {
-        throw new UniqueConstraintException('One-time prekey id is already in use', {
-          cause: error,
-        });
+        throw this.uniqueViolation(error);
       }
 
       throw new PersistenceException('Failed to rotate E2EE device', { cause: error });
@@ -195,5 +204,18 @@ export class PostgresE2eeRegistryRepository implements E2eeRegistryRepository {
       .where(eq(e2eePrekeys.deviceId, deviceId));
 
     return row?.count ?? 0;
+  }
+
+  /** Prekey ids collide on the composite primary key; devices on unique rows. */
+  private uniqueViolation(error: unknown): Error {
+    const constraint = this.inspector.constraintName(error);
+
+    if (constraint === PREKEY_PRIMARY_KEY) {
+      return new UniqueConstraintException(PREKEY_PRIMARY_KEY, { cause: error });
+    }
+
+    return new E2eeDeviceConflictException('This device is already registered', {
+      cause: error,
+    });
   }
 }

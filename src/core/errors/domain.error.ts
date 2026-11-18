@@ -304,6 +304,15 @@ export class E2eeDeviceNotFoundException extends DomainException {
   }
 }
 
+/** A one-time prekey id already exists for the device. */
+export class E2eePrekeyConflictException extends DomainException {
+  readonly code = ErrorCode.CONFLICT;
+
+  constructor(message = 'One-time prekey id is already in use', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}
+
 export class E2eePrekeyExhaustedException extends DomainException {
   readonly code = ErrorCode.E2EE_PREKEY_EXHAUSTED;
 

@@ -2,15 +2,16 @@ import { inject, injectable } from 'inversify';
 import {
   E2eeDeviceConflictException,
   E2eeDeviceNotFoundException,
+  E2eePrekeyConflictException,
   E2eePrekeyExhaustedException,
 } from '@/core/errors/domain.error.js';
 import { UniqueConstraintException } from '@/core/errors/repository.error.js';
 import { E2EE_TYPES } from '@/modules/e2ee/e2ee.types.js';
-import type { E2eeDeviceRecord } from '@/modules/e2ee/logic/entities/e2ee-device-record.js';
 import type {
   E2eeKeyService,
   E2eeRegistrationInput,
 } from '@/modules/e2ee/logic/e2ee-key.service.js';
+import type { E2eeDeviceRecord } from '@/modules/e2ee/logic/entities/e2ee-device-record.js';
 import type {
   CreateE2eeDeviceInput,
   E2eeRegistryRepository,
@@ -141,6 +142,10 @@ export class E2eeDeviceService {
       return await operation();
     } catch (error) {
       if (error instanceof UniqueConstraintException) {
+        if (error.constraint === 'e2ee_prekeys_pkey') {
+          throw new E2eePrekeyConflictException();
+        }
+
         throw new E2eeDeviceConflictException();
       }
 
