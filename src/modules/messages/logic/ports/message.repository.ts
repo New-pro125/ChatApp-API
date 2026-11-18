@@ -30,8 +30,21 @@ export interface ListMessagesQuery {
   beforeId?: string | undefined;
 }
 
+/** Ciphertext payload accepted when creating a secret message. */
+export interface CreateSecretMessageInput {
+  chatId: string;
+  senderId: string;
+  senderDeviceId: string;
+  recipientDeviceId: string;
+  ciphertext: string;
+  nonce: string;
+  ephemeralPublicKey: string;
+}
+
 export interface MessageRepository {
   create(input: CreateMessageInput): Promise<MessageRecord>;
+
+  createSecret(input: CreateSecretMessageInput): Promise<MessageRecord>;
 
   findById(chatId: string, id: string): Promise<MessageRecord | null>;
 

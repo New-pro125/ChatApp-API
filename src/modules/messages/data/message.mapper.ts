@@ -18,6 +18,11 @@ export const messageSelection = {
   editedAt: messages.editedAt,
   deletedAt: messages.deletedAt,
   createdAt: messages.createdAt,
+  ciphertext: messages.ciphertext,
+  nonce: messages.nonce,
+  ephemeralPublicKey: messages.ephemeralPublicKey,
+  senderDeviceId: messages.senderDeviceId,
+  recipientDeviceId: messages.recipientDeviceId,
 } as const;
 
 export type MessageRow = Pick<InferSelectModel<typeof messages>, keyof typeof messageSelection>;
@@ -36,6 +41,11 @@ export class MessageMapper {
       row.editedAt,
       row.deletedAt,
       row.createdAt,
+      row.ciphertext ?? null,
+      row.nonce ?? null,
+      row.ephemeralPublicKey ?? null,
+      row.senderDeviceId ?? null,
+      row.recipientDeviceId ?? null,
     );
   }
 }

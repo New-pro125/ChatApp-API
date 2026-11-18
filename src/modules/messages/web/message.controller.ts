@@ -13,6 +13,7 @@ import {
   listMessagesQuerySchema,
   messageParamsSchema,
   sendMessageSchema,
+  sendSecretMessageSchema,
 } from '@/modules/messages/web/dto/message.schemas.js';
 
 @injectable()
@@ -23,22 +24,31 @@ export class MessageController {
   ) {}
 
   send: RequestHandler = async (req, res) => {
-    const user = this.requireUser(req);
+    const { userId } = this.requireAuth(req);
     const { chatId } = chatParamsSchema.parse(req.params);
     const input = sendMessageSchema.parse(req.body);
-    const message = await this.messages.send(user.id, chatId, input);
+    const message = await this.messages.send(userId, chatId, input);
+
+    this.response.created(res, this.present(message));
+  };
+
+  sendSecret: RequestHandler = async (req, res) => {
+    const { userId, deviceId } = this.requireAuth(req);
+    const { chatId } = chatParamsSchema.parse(req.params);
+    const input = sendSecretMessageSchema.parse(req.body);
+    const message = await this.messages.sendSecret(userId, deviceId, chatId, input);
 
     this.response.created(res, this.present(message));
   };
 
   list: RequestHandler = async (req, res) => {
-    const user = this.requireUser(req);
+    const { userId } = this.requireAuth(req);
     const { chatId } = chatParamsSchema.parse(req.params);
     const query = listMessagesQuerySchema.parse(req.query);
 
     // Fetch one extra row so the cursor is null only when the page is truly
     // the last one, without running a separate count query.
-    const rows = await this.messages.list(user.id, chatId, {
+    const rows = await this.messages.list(userId, chatId, {
       limit: query.limit + 1,
       beforeId: query.cursor,
     });
@@ -53,38 +63,38 @@ export class MessageController {
   };
 
   edit: RequestHandler = async (req, res) => {
-    const user = this.requireUser(req);
+    const { userId } = this.requireAuth(req);
     const { chatId, messageId } = messageParamsSchema.parse(req.params);
     const { body } = editMessageSchema.parse(req.body);
-    const message = await this.messages.edit(user.id, chatId, messageId, body);
+    const message = await this.messages.edit(userId, chatId, messageId, body);
 
     this.response.ok(res, this.present(message));
   };
 
   remove: RequestHandler = async (req, res) => {
-    const user = this.requireUser(req);
+    const { userId } = this.requireAuth(req);
     const { chatId, messageId } = messageParamsSchema.parse(req.params);
 
-    await this.messages.remove(user.id, chatId, messageId);
+    await this.messages.remove(userId, chatId, messageId);
 
     this.response.noContent(res);
   };
 
   forward: RequestHandler = async (req, res) => {
-    const user = this.requireUser(req);
+    const { userId } = this.requireAuth(req);
     const { chatId, messageId } = messageParamsSchema.parse(req.params);
     const { targetChatId } = forwardMessageSchema.parse(req.body);
-    const message = await this.messages.forward(user.id, chatId, messageId, targetChatId);
+    const message = await this.messages.forward(userId, chatId, messageId, targetChatId);
 
     this.response.created(res, this.present(message));
   };
 
-  private requireUser(req: Request): Express.User {
-    if (!req.isAuthenticated()) {
+  private requireAuth(req: Request): { userId: string; deviceId: string } {
+    if (!(req.auth && req.isAuthenticated())) {
       throw new UnauthorizedException();
     }
 
-    return req.user;
+    return { userId: req.user.id, deviceId: req.auth.deviceId };
   }
 
   /** Redacts soft-deleted bodies into tombstones at the HTTP boundary. */
@@ -101,6 +111,11 @@ export class MessageController {
       editedAt: message.editedAt?.toISOString() ?? null,
       deletedAt: message.deletedAt?.toISOString() ?? null,
       createdAt: message.createdAt.toISOString(),
+      ciphertext: message.ciphertext,
+      nonce: message.nonce,
+      ephemeralPublicKey: message.ephemeralPublicKey,
+      senderDeviceId: message.senderDeviceId,
+      recipientDeviceId: message.recipientDeviceId,
     };
   }
 }

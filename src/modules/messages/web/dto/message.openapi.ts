@@ -14,6 +14,7 @@ import {
   messageParamsSchema,
   openDirectChatSchema,
   sendMessageSchema,
+  sendSecretMessageSchema,
 } from '@/modules/messages/web/dto/message.schemas.js';
 
 const bearerSecurity = [{ bearerAuth: [] }] as const;
@@ -30,7 +31,7 @@ export const participantSummarySchema = z
 export const chatSchema = z
   .object({
     id: z.uuid(),
-    type: z.enum(['direct', 'group', 'channel']),
+    type: z.enum(['direct', 'secret', 'group', 'channel']),
     title: z.string().nullable(),
     participants: z.array(participantSummarySchema),
     createdAt: z.iso.datetime(),
@@ -43,7 +44,7 @@ export const messageSchema = z
     id: z.uuid(),
     chatId: z.uuid(),
     senderId: z.uuid(),
-    type: z.enum(['text', 'system']),
+    type: z.enum(['text', 'system', 'secret']),
     body: z.string().nullable(),
     replyToMessageId: z.uuid().nullable(),
     forwardedFromChatId: z.uuid().nullable(),
@@ -51,6 +52,11 @@ export const messageSchema = z
     editedAt: z.iso.datetime().nullable(),
     deletedAt: z.iso.datetime().nullable(),
     createdAt: z.iso.datetime(),
+    ciphertext: z.string().nullable(),
+    nonce: z.string().nullable(),
+    ephemeralPublicKey: z.string().nullable(),
+    senderDeviceId: z.uuid().nullable(),
+    recipientDeviceId: z.uuid().nullable(),
   })
   .meta({ id: 'Message' });
 
@@ -80,6 +86,20 @@ export const messageContracts = {
       ...commonErrorResponses,
     },
   },
+  openSecret: {
+    operationId: 'chats.openSecret',
+    tags: ['Chats'],
+    summary: 'Open or retrieve a one-to-one secret chat',
+    description:
+      'Requires registered E2EE devices for both users. Secret chat content is opaque ciphertext and is never searchable.',
+    security: bearerSecurity,
+    request: { body: openDirectChatSchema },
+    responses: {
+      200: { description: 'The existing secret chat', schema: chatResponse },
+      201: { description: 'The new secret chat', schema: chatResponse },
+      ...commonErrorResponses,
+    },
+  },
   listChats: {
     operationId: 'chats.listMine',
     tags: ['Chats'],
@@ -102,6 +122,19 @@ export const messageContracts = {
     request: { params: chatParamsSchema, body: sendMessageSchema },
     responses: {
       201: { description: 'The sent message', schema: messageResponse },
+      ...commonErrorResponses,
+    },
+  },
+  sendSecretMessage: {
+    operationId: 'chats.sendSecretMessage',
+    tags: ['Messages'],
+    summary: 'Store ciphertext in a secret chat',
+    description:
+      'Stores AES-GCM ciphertext for a device owned by the other participant. The server cannot decrypt it.',
+    security: bearerSecurity,
+    request: { params: chatParamsSchema, body: sendSecretMessageSchema },
+    responses: {
+      201: { description: 'The stored ciphertext message', schema: messageResponse },
       ...commonErrorResponses,
     },
   },

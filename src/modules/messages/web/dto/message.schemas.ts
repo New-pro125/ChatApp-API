@@ -25,6 +25,18 @@ export const sendMessageSchema = z.object({
   replyToMessageId: z.uuid().optional(),
 });
 
+/** Body for storing opaque AES-GCM ciphertext in a secret chat. */
+export const sendSecretMessageSchema = z.object({
+  recipientDeviceId: z.uuid(),
+  ciphertext: z
+    .string()
+    .min(1)
+    .max(8192)
+    .regex(/^[A-Za-z0-9_-]+$/),
+  nonce: z.string().regex(/^[A-Za-z0-9_-]{16}$/),
+  ephemeralPublicKey: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+});
+
 /**
  * Keyset page of message history. `cursor` is the id of the last message from
  * the previous page; ids are uuidv7, so ordering is chronological.
