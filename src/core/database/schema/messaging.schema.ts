@@ -44,10 +44,10 @@ export const chats = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    check('chats_type_check', sql`${table.type} in ('direct', 'group', 'channel')`),
+    check('chats_type_check', sql`${table.type} in ('direct', 'secret', 'group', 'channel')`),
     check(
       'chats_shape_check',
-      sql`(${table.type} = 'direct' and ${table.title} is null and ${table.directKey} is not null) or (${table.type} <> 'direct' and ${table.title} is not null and ${table.directKey} is null)`,
+      sql`(${table.type} in ('direct', 'secret') and ${table.title} is null and ${table.directKey} is not null) or (${table.type} not in ('direct', 'secret') and ${table.title} is not null and ${table.directKey} is null)`,
     ),
     check(
       'chats_title_length_check',
@@ -98,17 +98,39 @@ export const messages = pgTable(
     editedAt: timestamp('edited_at', { withTimezone: true }),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    ciphertext: text('ciphertext'),
+    nonce: text('nonce'),
+    ephemeralPublicKey: text('ephemeral_public_key'),
+    senderDeviceId: uuid('sender_device_id'),
+    recipientDeviceId: uuid('recipient_device_id'),
   },
   (table) => [
     primaryKey({ columns: [table.chatId, table.id], name: 'messages_pkey' }),
-    check('messages_type_check', sql`${table.type} in ('text', 'system')`),
+    // `messages` is partitioned, so PostgreSQL propagates an added CHECK to
+    // every partition. Qualified references such as `"messages"."type"` are
+    // invalid inside `messages_p0`; these checks use unqualified identifiers.
+    check('messages_type_check', sql`${sql.identifier('type')} in ('text', 'system', 'secret')`),
     check(
       'messages_body_length_check',
       sql`${table.body} is null or char_length(${table.body}) between 1 and 4096`,
     ),
     check('messages_text_body_check', sql`${table.type} <> 'text' or ${table.body} is not null`),
+    check(
+      'messages_secret_shape_check',
+      sql`${sql.identifier('type')} <> 'secret' or (${sql.identifier('body')} is null and ${sql.identifier('ciphertext')} is not null and ${sql.identifier('nonce')} is not null and ${sql.identifier('ephemeral_public_key')} is not null and ${sql.identifier('sender_device_id')} is not null and ${sql.identifier('recipient_device_id')} is not null)`,
+    ),
+    check(
+      'messages_non_secret_no_ciphertext_check',
+      sql`${sql.identifier('type')} = 'secret' or (${sql.identifier('ciphertext')} is null and ${sql.identifier('nonce')} is null and ${sql.identifier('ephemeral_public_key')} is null and ${sql.identifier('sender_device_id')} is null and ${sql.identifier('recipient_device_id')} is null)`,
+    ),
+    check(
+      'messages_secret_no_reply_forward_check',
+      sql`${sql.identifier('type')} <> 'secret' or (${sql.identifier('reply_to_message_id')} is null and ${sql.identifier('forwarded_from_chat_id')} is null and ${sql.identifier('forwarded_from_message_id')} is null)`,
+    ),
     // Non-unique, so it may omit the partition key. Keeps the `sender_id`
     // RESTRICT foreign key check from scanning all sixteen partitions.
     index('messages_sender_id_index').on(table.senderId),
+    index('messages_sender_device_id_index').on(table.chatId, table.senderDeviceId),
+    index('messages_recipient_device_id_index').on(table.chatId, table.recipientDeviceId),
   ],
 );

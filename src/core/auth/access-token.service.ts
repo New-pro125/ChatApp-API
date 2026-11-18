@@ -18,6 +18,7 @@ export interface AccessTokenClaims {
   sessionVersion: number;
   jti: string;
   refreshTokenId: string;
+  deviceId: string;
   expiresAt: Date;
 }
 
@@ -27,6 +28,7 @@ interface AccessTokenPayload {
   jti?: unknown;
   sv?: unknown;
   rti?: unknown;
+  did?: unknown;
   exp?: unknown;
 }
 
@@ -34,8 +36,9 @@ interface AccessTokenPayload {
  * Signs and verifies the short-lived access tokens used for API requests.
  *
  * Tokens are EdDSA (Ed25519) JWTs that carry only the user id, session
- * version, and the id of the refresh token they were issued with; the user
- * record itself is resolved per request through the `PrincipalStore`.
+ * version, the id of the refresh token they were issued with, and the id of
+ * the device family it belongs to; the user record itself is resolved per
+ * request through the `PrincipalStore`.
  */
 @injectable()
 export class AccessTokenService {
@@ -71,6 +74,7 @@ export class AccessTokenService {
     userId: string,
     sessionVersion: number,
     refreshTokenId: string,
+    deviceId: string,
     issuedAt: Date,
   ): Promise<{ token: string; expiresAt: Date }> {
     const expiresAt = new Date(issuedAt.getTime() + this.ttlSeconds * 1000);
@@ -78,6 +82,7 @@ export class AccessTokenService {
     const token = await new SignJWT({
       sv: sessionVersion,
       rti: refreshTokenId,
+      did: deviceId,
     })
       .setProtectedHeader({ alg: 'EdDSA', typ: 'JWT' })
       .setSubject(userId)
@@ -104,13 +109,21 @@ export class AccessTokenService {
       const sessionVersion = typeof payload.sv === 'number' ? payload.sv : null;
       const jti = typeof payload.jti === 'string' ? payload.jti : null;
       const refreshTokenId = typeof payload.rti === 'string' ? payload.rti : null;
+      const deviceId = typeof payload.did === 'string' ? payload.did : null;
       const expiresAtMs = typeof payload.exp === 'number' ? payload.exp * 1000 : null;
 
-      if (!(userId && sessionVersion && jti && refreshTokenId && expiresAtMs)) {
+      if (!(userId && sessionVersion && jti && refreshTokenId && deviceId && expiresAtMs)) {
         throw new Error('Token payload is missing required claims');
       }
 
-      return { userId, sessionVersion, jti, refreshTokenId, expiresAt: new Date(expiresAtMs) };
+      return {
+        userId,
+        sessionVersion,
+        jti,
+        refreshTokenId,
+        deviceId,
+        expiresAt: new Date(expiresAtMs),
+      };
     } catch (error) {
       throw new InvalidAccessTokenException('Access token is invalid or expired', { cause: error });
     }

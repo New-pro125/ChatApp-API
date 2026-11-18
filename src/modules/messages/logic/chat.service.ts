@@ -1,6 +1,7 @@
 import { inject, injectable } from 'inversify';
 import { CORE_TYPES } from '@/core/container/core.types.js';
-import { UserNotFoundException } from '@/core/errors/domain.error.js';
+import type { E2eeDeviceReader } from '@/core/e2ee/e2ee-device.reader.js';
+import { E2eeDeviceNotFoundException, UserNotFoundException } from '@/core/errors/domain.error.js';
 import { BadRequestException } from '@/core/errors/http.error.js';
 import { UniqueConstraintException } from '@/core/errors/repository.error.js';
 import type { UserSummary, UserSummaryReader } from '@/core/users/user-summary.reader.js';
@@ -24,6 +25,7 @@ export class ChatService {
     @inject(MESSAGES_TYPES.ChatMemberRepository) private readonly members: ChatMemberRepository,
     @inject(MESSAGES_TYPES.MessagingPolicy) private readonly policy: MessagingPolicy,
     @inject(CORE_TYPES.UserSummaryReader) private readonly users: UserSummaryReader,
+    @inject(CORE_TYPES.E2eeDeviceReader) private readonly e2eeDevices: E2eeDeviceReader,
   ) {}
 
   async openDirect(creatorId: string, participantId: string): Promise<OpenDirectResult> {
@@ -47,6 +49,40 @@ export class ChatService {
     }
 
     const created = await this.createDirect(creatorId, participantId, directKey);
+
+    return { view: await this.toView(created.chat), created: created.created };
+  }
+
+  /** Opens the deterministic one-to-one secret chat once both sides have a device. */
+  async openSecret(creatorId: string, participantId: string): Promise<OpenDirectResult> {
+    if (creatorId === participantId) {
+      throw new BadRequestException('A secret chat requires two different users');
+    }
+
+    const participant = await this.users.findSummaries([participantId]);
+
+    if (participant.length === 0) {
+      throw new UserNotFoundException();
+    }
+
+    await this.policy.assertPairUnblocked(creatorId, participantId);
+
+    if (!(await this.e2eeDevices.hasAnyDevice(creatorId))) {
+      throw new E2eeDeviceNotFoundException('Your device must be registered for E2EE');
+    }
+
+    if (!(await this.e2eeDevices.hasAnyDevice(participantId))) {
+      throw new E2eeDeviceNotFoundException('The other user has no E2EE devices');
+    }
+
+    const secretKey = `secret:${this.directKey(creatorId, participantId)}`;
+    const existing = await this.chats.findDirectByKey(secretKey);
+
+    if (existing) {
+      return { view: await this.toView(existing), created: false };
+    }
+
+    const created = await this.createSecretChat(creatorId, participantId, secretKey);
 
     return { view: await this.toView(created.chat), created: created.created };
   }
@@ -97,6 +133,43 @@ export class ChatService {
 
       await this.members.add(chat.id, creatorId);
       await this.members.add(chat.id, participantId);
+
+      return { chat, created: true };
+    } catch (error) {
+      if (!(error instanceof UniqueConstraintException)) {
+        throw error;
+      }
+
+      const winner = await this.chats.findDirectByKey(directKey);
+
+      if (!winner) {
+        throw error;
+      }
+
+      return { chat: winner, created: false };
+    }
+  }
+
+  /**
+   * Creates the secret chat and both memberships in one transaction. If a
+   * concurrent open wins the unique direct-key race, the winning chat is
+   * refetched so both callers receive the same usable two-member chat.
+   */
+  private async createSecretChat(
+    creatorId: string,
+    participantId: string,
+    directKey: string,
+  ): Promise<{ chat: ChatRecord; created: boolean }> {
+    try {
+      const chat = await this.chats.createWithMembers(
+        {
+          type: 'secret',
+          title: null,
+          directKey,
+          createdBy: creatorId,
+        },
+        [creatorId, participantId],
+      );
 
       return { chat, created: true };
     } catch (error) {

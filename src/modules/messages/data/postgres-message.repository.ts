@@ -8,6 +8,7 @@ import { MessageMapper, messageSelection } from '@/modules/messages/data/message
 import type { MessageRecord } from '@/modules/messages/logic/entities/message-record.js';
 import type {
   CreateMessageInput,
+  CreateSecretMessageInput,
   ListMessagesQuery,
   MessageRepository,
 } from '@/modules/messages/logic/ports/message.repository.js';
@@ -61,6 +62,43 @@ export class PostgresMessageRepository implements MessageRepository {
       }
 
       throw new PersistenceException('Failed to create message', { cause: error });
+    }
+  }
+
+  async createSecret(input: CreateSecretMessageInput): Promise<MessageRecord> {
+    try {
+      return await this.db.transaction(async (tx) => {
+        const rows = await tx
+          .insert(messages)
+          .values({
+            chatId: input.chatId,
+            senderId: input.senderId,
+            type: 'secret',
+            body: null,
+            ciphertext: input.ciphertext,
+            nonce: input.nonce,
+            ephemeralPublicKey: input.ephemeralPublicKey,
+            senderDeviceId: input.senderDeviceId,
+            recipientDeviceId: input.recipientDeviceId,
+          })
+          .returning(messageSelection);
+
+        const row = rows[0];
+
+        if (!row) {
+          throw new PersistenceException('PostgreSQL did not return the created secret message');
+        }
+
+        await tx.update(chats).set({ updatedAt: new Date() }).where(eq(chats.id, input.chatId));
+
+        return this.mapper.toRecord(row);
+      });
+    } catch (error) {
+      if (error instanceof PersistenceException) {
+        throw error;
+      }
+
+      throw new PersistenceException('Failed to create secret message', { cause: error });
     }
   }
 

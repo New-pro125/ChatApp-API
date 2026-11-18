@@ -517,6 +517,12 @@ npm run db:studio    # open Drizzle Studio (development only)
 npm run db:reset     # drop local schemas and rebuild from migrations
 ```
 
+> **Deploying migration `0009_young_human_fly`:** it alters the partitioned
+> `messages` table, so PostgreSQL takes an `ACCESS EXCLUSIVE` lock that applies
+> to every partition. Apply it in a maintenance window, or set a short
+> `lock_timeout` (for example `SET lock_timeout = '5s'`) and retry so the DDL
+> does not queue behind long-running reads and block new queries.
+
 ## Docker
 
 `Dockerfile` is retained for production images. Compose provides the backing
@@ -569,3 +575,37 @@ import { AuthService } from '@/modules/auth/logic/auth.service.js';
 - `tsx` resolves aliases during development.
 - `tsc-alias` rewrites `@/...` to relative imports in `dist` after `tsc`.
 - `paths` is declared without `baseUrl`, as required by TypeScript 7.
+
+## End-to-end encrypted secret chats
+
+The API supports hybrid E2EE. Normal direct chats remain server-visible and
+searchable. Secret chats (`type: "secret"`) store only opaque ciphertext; the
+API never receives private keys, shared secrets, or plaintext.
+
+Clients register one device per refresh-token family:
+
+- `POST /api/e2ee/devices`
+- `GET /api/e2ee/devices`
+- `GET /api/e2ee/users/:userId/devices`
+- `POST /api/e2ee/devices/rotate`
+- `POST /api/e2ee/devices/prekeys`
+- `GET /api/e2ee/users/:userId/devices/:deviceId/bundle`
+
+The peer device listing lets an authenticated client discover another user's
+public devices without that user's token. Device listings expose
+`identitySignature` and `hasOneTimePreKeys`, but never private keys or shared
+secrets. Clients **must** verify that `identitySignature` is a valid Ed25519
+signature by the device's `signingPublicKey` over the UTF-8 bytes
+`e2ee-identity:` followed by the raw 32-byte `identityPublicKey`, and must
+verify the signed prekey signature the same way over
+`e2ee-signed-prekey:${id}:` followed by the raw prekey bytes.
+
+Then they can open and use a secret chat:
+
+- `POST /api/chats/secret`
+- `POST /api/chats/:chatId/secret-messages`
+- `GET /api/chats/:chatId/messages`
+
+Secret messages cannot be edited, deleted, forwarded, replied to, or searched.
+Media, self-destruct timers, and a double ratchet are not part of this release.
+Pre-existing access tokens without the `did` claim must be refreshed.

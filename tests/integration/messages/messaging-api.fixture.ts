@@ -2,6 +2,7 @@ import type { AuthModule } from '@/modules/auth/auth.module.js';
 import { AUTH_TYPES } from '@/modules/auth/auth.types.js';
 import type { BlockService } from '@/modules/auth/logic/block.service.js';
 import { AuthFixture } from '../../fixtures/auth.fixture.js';
+import { makeE2eeRegistration } from '../../helpers/e2ee-keys.js';
 import type { TestApp } from '../../helpers/test-app.js';
 
 export interface ApiUser {
@@ -57,6 +58,36 @@ export class MessagingApiFixture {
 
     if (response.status !== 201) {
       throw new Error(`Could not open a direct chat: ${response.status} ${response.text}`);
+    }
+
+    return response.body.data.id as string;
+  }
+
+  async registerDevice(
+    user: ApiUser,
+    oneTimePrekeyCount = 2,
+  ): Promise<{ deviceId: string; registration: ReturnType<typeof makeE2eeRegistration> }> {
+    const registration = makeE2eeRegistration(oneTimePrekeyCount);
+    const response = await this.app.request
+      .post('/api/e2ee/devices')
+      .set(user.headers)
+      .send(registration);
+
+    if (response.status !== 201) {
+      throw new Error(`Could not register an E2EE device: ${response.status} ${response.text}`);
+    }
+
+    return { deviceId: response.body.data.deviceId as string, registration };
+  }
+
+  async openSecretChat(participantId: string, headers: Record<string, string>): Promise<string> {
+    const response = await this.app.request
+      .post('/api/chats/secret')
+      .set(headers)
+      .send({ participantId });
+
+    if (response.status !== 201) {
+      throw new Error(`Could not open a secret chat: ${response.status} ${response.text}`);
     }
 
     return response.body.data.id as string;

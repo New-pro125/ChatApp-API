@@ -29,6 +29,20 @@ export class ChatController {
     this.response.ok(res, data);
   };
 
+  openSecret: RequestHandler = async (req, res) => {
+    const user = this.requireUser(req);
+    const { participantId } = openDirectChatSchema.parse(req.body);
+    const result = await this.chats.openSecret(user.id, participantId);
+    const data = this.present(result.view);
+
+    if (result.created) {
+      this.response.created(res, data);
+      return;
+    }
+
+    this.response.ok(res, data);
+  };
+
   listMine: RequestHandler = async (req, res) => {
     const user = this.requireUser(req);
     const chats = await this.chats.listForUser(user.id);

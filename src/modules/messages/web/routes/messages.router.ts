@@ -49,6 +49,28 @@ export class MessagesRouter {
     );
 
     routes.post(
+      '/secret',
+      messageContracts.openSecret,
+      this.requireAuth.handle,
+      this.requireVerifiedEmail.handle,
+      this.limiter.handle,
+      (req, res, next) =>
+        req.container.get<ChatController>(MESSAGES_TYPES.ChatController).openSecret(req, res, next),
+    );
+
+    routes.post(
+      '/:chatId/secret-messages',
+      messageContracts.sendSecretMessage,
+      this.requireAuth.handle,
+      this.requireVerifiedEmail.handle,
+      this.limiter.handle,
+      (req, res, next) =>
+        req.container
+          .get<MessageController>(MESSAGES_TYPES.MessageController)
+          .sendSecret(req, res, next),
+    );
+
+    routes.post(
       '/:chatId/messages',
       messageContracts.sendMessage,
       this.requireAuth.handle,
