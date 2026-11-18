@@ -33,11 +33,15 @@ describe('PostgresE2eeRegistryRepository', () => {
 
       await expect(repository.create(input)).rejects.toBeInstanceOf(E2eeDeviceConflictException);
 
-      const first = await repository.consumeOneTimePrekey(input.deviceId);
-      const second = await repository.consumeOneTimePrekey(input.deviceId);
+      const first = await repository.consumeBundle(user.id, input.deviceId);
+      const second = await repository.consumeBundle(user.id, input.deviceId);
 
-      expect(first?.prekeyId).toBe(1);
-      expect(second).toBeNull();
+      expect(first?.oneTimePrekey?.prekeyId).toBe(1);
+      expect(second?.device.deviceId).toBe(input.deviceId);
+      expect(second?.oneTimePrekey).toBeNull();
+      expect(
+        await repository.consumeBundle(user.id, '00000000-0000-7000-8000-0000000000ff'),
+      ).toBeNull();
     } finally {
       await app.close();
     }

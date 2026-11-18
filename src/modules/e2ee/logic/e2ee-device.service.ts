@@ -92,31 +92,27 @@ export class E2eeDeviceService {
       });
     }
 
-    try {
-      await this.registry.addOneTimePrekeys(deviceId, keys);
-    } catch (error) {
-      if (error instanceof UniqueConstraintException) {
-        throw new E2eeDeviceConflictException('One-time prekey id is already in use');
-      }
+    const added = await this.translateConflicts(() =>
+      this.registry.addOneTimePrekeys(deviceId, keys),
+    );
 
-      throw error;
+    if (!added) {
+      throw new E2eeDeviceNotFoundException();
     }
   }
 
   async bundle(userId: string, deviceId: string) {
-    const device = await this.registry.findByUserAndDevice(userId, deviceId);
+    const result = await this.registry.consumeBundle(userId, deviceId);
 
-    if (!device) {
+    if (!result) {
       throw new E2eeDeviceNotFoundException();
     }
 
-    const oneTimePrekey = await this.registry.consumeOneTimePrekey(deviceId);
-
-    if (!oneTimePrekey) {
+    if (!result.oneTimePrekey) {
       throw new E2eePrekeyExhaustedException();
     }
 
-    return { device, oneTimePrekey };
+    return { device: result.device, oneTimePrekey: result.oneTimePrekey };
   }
 
   private toRegistryInput(

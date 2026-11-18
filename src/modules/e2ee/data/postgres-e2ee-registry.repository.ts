@@ -86,16 +86,6 @@ export class PostgresE2eeRegistryRepository implements E2eeRegistryRepository {
     return row ? this.mapper.device(row) : null;
   }
 
-  async findByDeviceId(deviceId: string): Promise<E2eeDeviceRecord | null> {
-    const [row] = await this.db
-      .select()
-      .from(e2eeDevices)
-      .where(eq(e2eeDevices.deviceId, deviceId))
-      .limit(1);
-
-    return row ? this.mapper.device(row) : null;
-  }
-
   async listByUser(userId: string): Promise<E2eeDeviceRecord[]> {
     const rows = await this.db
       .select()
@@ -109,6 +99,19 @@ export class PostgresE2eeRegistryRepository implements E2eeRegistryRepository {
   async replace(input: CreateE2eeDeviceInput): Promise<E2eeDeviceRecord> {
     try {
       return await this.db.transaction(async (tx) => {
+        const [locked] = await tx
+          .select({ deviceId: e2eeDevices.deviceId })
+          .from(e2eeDevices)
+          .where(
+            sql`${e2eeDevices.userId} = ${input.userId} and ${e2eeDevices.deviceId} = ${input.deviceId}`,
+          )
+          .limit(1)
+          .for('update');
+
+        if (!locked) {
+          throw new E2eeDeviceConflictException('Device must be registered before rotation');
+        }
+
         const [row] = await tx
           .update(e2eeDevices)
           .set({
@@ -127,7 +130,7 @@ export class PostgresE2eeRegistryRepository implements E2eeRegistryRepository {
           .returning();
 
         if (!row) {
-          throw new E2eeDeviceConflictException('Device must be registered before rotation');
+          throw new PersistenceException('Device update returned no row');
         }
 
         await tx.delete(e2eePrekeys).where(eq(e2eePrekeys.deviceId, input.deviceId));
@@ -157,44 +160,77 @@ export class PostgresE2eeRegistryRepository implements E2eeRegistryRepository {
   async addOneTimePrekeys(
     deviceId: string,
     keys: ReadonlyArray<{ readonly id: number; readonly publicKey: string }>,
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
-      await this.db
-        .insert(e2eePrekeys)
-        .values(keys.map((key) => ({ deviceId, prekeyId: key.id, publicKey: key.publicKey })));
+      return await this.db.transaction(async (tx) => {
+        const [locked] = await tx
+          .select({ deviceId: e2eeDevices.deviceId })
+          .from(e2eeDevices)
+          .where(eq(e2eeDevices.deviceId, deviceId))
+          .limit(1)
+          .for('update');
+
+        if (!locked) {
+          return false;
+        }
+
+        await tx
+          .insert(e2eePrekeys)
+          .values(keys.map((key) => ({ deviceId, prekeyId: key.id, publicKey: key.publicKey })));
+
+        return true;
+      });
     } catch (error) {
       if (this.inspector.isUniqueViolation(error)) {
-        throw new UniqueConstraintException('One-time prekey id is already in use', {
-          cause: error,
-        });
+        throw new UniqueConstraintException(PREKEY_PRIMARY_KEY, { cause: error });
       }
 
       throw new PersistenceException('Failed to add one-time E2EE prekeys', { cause: error });
     }
   }
 
-  consumeOneTimePrekey(deviceId: string): Promise<E2eePrekeyRecord | null> {
-    return this.db.transaction(async (tx) => {
-      const [row] = await tx
-        .select()
-        .from(e2eePrekeys)
-        .where(eq(e2eePrekeys.deviceId, deviceId))
-        .orderBy(asc(e2eePrekeys.prekeyId))
-        .limit(1)
-        .for('update', { skipLocked: true });
+  async consumeBundle(userId: string, deviceId: string): Promise<E2eeBundleRecord | null> {
+    try {
+      return await this.db.transaction(async (tx) => {
+        // The device lock serializes this read with rotation and replenishment;
+        // the prekey lock below then blocks rather than skipping a row that is
+        // being consumed by a concurrent bundle request.
+        const [deviceRow] = await tx
+          .select()
+          .from(e2eeDevices)
+          .where(sql`${e2eeDevices.userId} = ${userId} and ${e2eeDevices.deviceId} = ${deviceId}`)
+          .limit(1)
+          .for('update');
 
-      if (!row) {
-        return null;
-      }
+        if (!deviceRow) {
+          return null;
+        }
 
-      await tx
-        .delete(e2eePrekeys)
-        .where(
-          sql`${e2eePrekeys.deviceId} = ${deviceId} and ${e2eePrekeys.prekeyId} = ${row.prekeyId}`,
-        );
+        const [prekeyRow] = await tx
+          .select()
+          .from(e2eePrekeys)
+          .where(eq(e2eePrekeys.deviceId, deviceId))
+          .orderBy(asc(e2eePrekeys.prekeyId))
+          .limit(1)
+          .for('update');
 
-      return this.mapper.prekey(row);
-    });
+        const device = this.mapper.device(deviceRow);
+
+        if (!prekeyRow) {
+          return { device, oneTimePrekey: null };
+        }
+
+        await tx
+          .delete(e2eePrekeys)
+          .where(
+            sql`${e2eePrekeys.deviceId} = ${deviceId} and ${e2eePrekeys.prekeyId} = ${prekeyRow.prekeyId}`,
+          );
+
+        return { device, oneTimePrekey: this.mapper.prekey(prekeyRow) };
+      });
+    } catch (error) {
+      throw new PersistenceException('Failed to consume E2EE bundle', { cause: error });
+    }
   }
 
   async countOneTimePrekeys(deviceId: string): Promise<number> {

@@ -13,16 +13,28 @@ export interface CreateE2eeDeviceInput {
   readonly oneTimePrekeys: ReadonlyArray<{ readonly id: number; readonly publicKey: string }>;
 }
 
+/** A locked device snapshot and, when available, one consumed one-time prekey. */
+export interface E2eeBundleRecord {
+  readonly device: E2eeDeviceRecord;
+  readonly oneTimePrekey: E2eePrekeyRecord | null;
+}
+
 export interface E2eeRegistryRepository {
   create(input: CreateE2eeDeviceInput): Promise<E2eeDeviceRecord>;
   findByUserAndDevice(userId: string, deviceId: string): Promise<E2eeDeviceRecord | null>;
-  findByDeviceId(deviceId: string): Promise<E2eeDeviceRecord | null>;
   listByUser(userId: string): Promise<E2eeDeviceRecord[]>;
   replace(input: CreateE2eeDeviceInput): Promise<E2eeDeviceRecord>;
   addOneTimePrekeys(
     deviceId: string,
     keys: ReadonlyArray<{ readonly id: number; readonly publicKey: string }>,
-  ): Promise<void>;
-  consumeOneTimePrekey(deviceId: string): Promise<E2eePrekeyRecord | null>;
+  ): Promise<boolean>;
+  /**
+   * Locks the device row so rotation and replenishment serialize, then
+   * consumes the oldest one-time prekey in the same transaction.
+   *
+   * Returns `null` when the device does not exist for the user. A non-null
+   * result with a null prekey means the device has no one-time prekeys left.
+   */
+  consumeBundle(userId: string, deviceId: string): Promise<E2eeBundleRecord | null>;
   countOneTimePrekeys(deviceId: string): Promise<number>;
 }
