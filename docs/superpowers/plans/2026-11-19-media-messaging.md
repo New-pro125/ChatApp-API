@@ -1669,6 +1669,7 @@ Add `sendMedia` after `send`:
       replyToMessageId: input.replyToMessageId ?? null,
     });
   }
+```
 
 Define a separate upload input so combined requests never carry a `mediaId`
 (the stored id comes from `storeAndScan`):
