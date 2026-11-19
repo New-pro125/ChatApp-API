@@ -109,6 +109,7 @@ function setup(chatType: 'direct' | 'secret' = 'direct') {
     policy as never,
     chats as never,
     members as never,
+    { removeForMessage: () => Promise.resolve() } as never,
     {} as never,
     {} as never,
     mediaAccess,

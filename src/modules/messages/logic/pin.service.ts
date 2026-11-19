@@ -2,11 +2,11 @@ import { inject, injectable } from 'inversify';
 import { ConflictException, NotFoundException } from '@/core/errors/http.error.js';
 import type { MessageRecord } from '@/modules/messages/logic/entities/message-record.js';
 import type { MessagingPolicy } from '@/modules/messages/logic/messaging-policy.service.js';
+import type { MessageRepository } from '@/modules/messages/logic/ports/message.repository.js';
 import type {
   MessagePinRepository,
   PinRecord,
 } from '@/modules/messages/logic/ports/message-pin.repository.js';
-import type { MessageRepository } from '@/modules/messages/logic/ports/message.repository.js';
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 
 export interface PinnedMessage {
@@ -45,9 +45,12 @@ export class PinService {
     await this.policy.requireMember(chatId, userId);
     const records = await this.pins.list(chatId, userId);
     const byId = new Map(
-      (await this.messages.listByIds(chatId, records.map((record) => record.messageId))).map(
-        (message) => [message.id, message],
-      ),
+      (
+        await this.messages.listByIds(
+          chatId,
+          records.map((record) => record.messageId),
+        )
+      ).map((message) => [message.id, message]),
     );
 
     return records.flatMap((record) => {
@@ -58,7 +61,7 @@ export class PinService {
   }
 
   /** Batched pin indicators for a page; called after history validates membership. */
-  async listPinnedFor(
+  listPinnedFor(
     chatId: string,
     viewerId: string,
     messageIds: readonly string[],

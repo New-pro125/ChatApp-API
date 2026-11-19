@@ -11,6 +11,7 @@ import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 import type { ChatController } from '@/modules/messages/web/chat.controller.js';
 import { messageContracts } from '@/modules/messages/web/dto/message.openapi.js';
 import type { MessageController } from '@/modules/messages/web/message.controller.js';
+import type { PinController } from '@/modules/messages/web/pin.controller.js';
 
 /** HTTP routes for chats and their nested messages. */
 @injectable()
@@ -66,6 +67,35 @@ export class MessagesRouter {
       this.limiter.handle,
       (req, res, next) =>
         req.container.get<ChatController>(MESSAGES_TYPES.ChatController).markRead(req, res, next),
+    );
+
+    routes.post(
+      '/:chatId/messages/:messageId/pin',
+      messageContracts.pinMessage,
+      this.requireAuth.handle,
+      this.requireVerifiedEmail.handle,
+      this.limiter.handle,
+      (req, res, next) =>
+        req.container.get<PinController>(MESSAGES_TYPES.PinController).pin(req, res, next),
+    );
+
+    routes.delete(
+      '/:chatId/messages/:messageId/pin',
+      messageContracts.unpinMessage,
+      this.requireAuth.handle,
+      this.requireVerifiedEmail.handle,
+      this.limiter.handle,
+      (req, res, next) =>
+        req.container.get<PinController>(MESSAGES_TYPES.PinController).unpin(req, res, next),
+    );
+
+    routes.get(
+      '/:chatId/pins',
+      messageContracts.listPinned,
+      this.requireAuth.handle,
+      this.requireVerifiedEmail.handle,
+      (req, res, next) =>
+        req.container.get<PinController>(MESSAGES_TYPES.PinController).list(req, res, next),
     );
 
     routes.post(

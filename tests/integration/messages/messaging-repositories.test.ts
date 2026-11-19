@@ -2,8 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { UniqueConstraintException } from '@/core/errors/repository.error.js';
 import type { ChatRepository } from '@/modules/messages/logic/ports/chat.repository.js';
 import type { ChatMemberRepository } from '@/modules/messages/logic/ports/chat-member.repository.js';
-import type { MessagePinRepository } from '@/modules/messages/logic/ports/message-pin.repository.js';
 import type { MessageRepository } from '@/modules/messages/logic/ports/message.repository.js';
+import type { MessagePinRepository } from '@/modules/messages/logic/ports/message-pin.repository.js';
 import { MessagesContainer } from '@/modules/messages/messages.container.js';
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 import { AuthFixture } from '../../fixtures/auth.fixture.js';
