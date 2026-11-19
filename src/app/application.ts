@@ -20,6 +20,7 @@ import type { AppModule } from '@/core/modules/app.module.js';
 import { AuthModule } from '@/modules/auth/auth.module.js';
 import { E2eeModule } from '@/modules/e2ee/e2ee.module.js';
 import { HealthModule } from '@/modules/health/health.module.js';
+import { MediaModule } from '@/modules/media/media.module.js';
 import { MessagesModule } from '@/modules/messages/messages.module.js';
 import { StoriesModule } from '@/modules/stories/stories.module.js';
 
@@ -91,6 +92,7 @@ export class Application {
       new HealthModule(container),
       new AuthModule(container, config),
       new StoriesModule(container),
+      new MediaModule(container),
       new E2eeModule(container),
       new MessagesModule(container),
     ];

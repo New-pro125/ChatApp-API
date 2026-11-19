@@ -39,6 +39,21 @@ declare global {
       MFA_ENROLLMENT_TTL_SECONDS?: string;
       MFA_RECOVERY_CODE_COUNT?: string;
 
+      MEDIA_BUCKET?: string;
+      MEDIA_REGION?: string;
+      MEDIA_ENDPOINT?: string;
+      MEDIA_ACCESS_KEY_ID?: string;
+      MEDIA_SECRET_ACCESS_KEY?: string;
+      MEDIA_FORCE_PATH_STYLE?: string;
+      MEDIA_MAX_BYTES?: string;
+      MEDIA_ALLOWED_CONTENT_TYPES?: string;
+      MEDIA_PRESIGN_TTL_SECONDS?: string;
+      MEDIA_SCAN_REQUIRED?: string;
+
+      CLAMAV_HOST?: string;
+      CLAMAV_PORT?: string;
+      CLAMAV_TIMEOUT_MS?: string;
+
       SMTP_HOST?: string;
       SMTP_PORT?: string;
       SMTP_SECURE?: string;

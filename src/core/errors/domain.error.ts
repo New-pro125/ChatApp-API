@@ -331,3 +331,43 @@ export class E2eeNotAllowedException extends DomainException {
     super(message, options);
   }
 }
+
+export class InvalidMediaInputException extends DomainException {
+  readonly code = ErrorCode.VALIDATION_ERROR;
+
+  constructor(message = 'Invalid media upload', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}
+
+export class MediaNotFoundException extends DomainException {
+  readonly code = ErrorCode.NOT_FOUND;
+
+  constructor(message = 'Media object not found', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}
+
+export class MediaNotReadyException extends DomainException {
+  readonly code = ErrorCode.MEDIA_NOT_READY;
+
+  constructor(message = 'Media object is not ready for download', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}
+
+export class MediaInfectedException extends DomainException {
+  readonly code = ErrorCode.MEDIA_INFECTED;
+
+  constructor(message = 'The uploaded file is infected', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}
+
+export class MediaScanUnavailableException extends DomainException {
+  readonly code = ErrorCode.MEDIA_SCAN_UNAVAILABLE;
+
+  constructor(message = 'Virus scanning is temporarily unavailable', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}

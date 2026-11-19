@@ -24,3 +24,17 @@ export class PersistenceException extends RepositoryException {
     super(message, options);
   }
 }
+
+/** Failure talking to S3-compatible object storage. */
+export class ObjectStoreException extends RepositoryException {
+  constructor(message = 'Object storage operation failed', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}
+
+/** Failure talking to the ClamAV daemon or parsing its protocol. */
+export class VirusScannerException extends RepositoryException {
+  constructor(message = 'Virus scan failed', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}
