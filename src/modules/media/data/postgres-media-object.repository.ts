@@ -90,6 +90,20 @@ export class PostgresMediaObjectRepository implements MediaObjectRepository {
     }
   }
 
+  async findById(mediaId: string): Promise<MediaObjectRecord | null> {
+    try {
+      const rows = await this.db
+        .select(mediaObjectSelection)
+        .from(mediaObjects)
+        .where(eq(mediaObjects.id, mediaId))
+        .limit(1);
+      const row = rows[0];
+      return row === undefined ? null : this.mapper.toRecord(row);
+    } catch (error) {
+      throw new PersistenceException('Failed to read media object', { cause: error });
+    }
+  }
+
   transitionToReady(
     id: string,
     ownerUserId: string,

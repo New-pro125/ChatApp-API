@@ -1,6 +1,7 @@
 import type { InferSelectModel } from 'drizzle-orm';
 import { messages } from '@/core/database/schema/index.js';
 import {
+  type MediaKind,
   MessageRecord,
   type MessageType,
 } from '@/modules/messages/logic/entities/message-record.js';
@@ -12,6 +13,12 @@ export const messageSelection = {
   senderId: messages.senderId,
   type: messages.type,
   body: messages.body,
+  mediaId: messages.mediaId,
+  mediaKind: messages.mediaKind,
+  caption: messages.caption,
+  durationMs: messages.durationMs,
+  width: messages.width,
+  height: messages.height,
   replyToMessageId: messages.replyToMessageId,
   forwardedFromChatId: messages.forwardedFromChatId,
   forwardedFromMessageId: messages.forwardedFromMessageId,
@@ -46,6 +53,16 @@ export class MessageMapper {
       row.ephemeralPublicKey ?? null,
       row.senderDeviceId ?? null,
       row.recipientDeviceId ?? null,
+      row.mediaId === null || row.mediaKind === null
+        ? null
+        : {
+            mediaId: row.mediaId,
+            kind: row.mediaKind as MediaKind,
+            caption: row.caption,
+            durationMs: row.durationMs,
+            width: row.width,
+            height: row.height,
+          },
     );
   }
 }

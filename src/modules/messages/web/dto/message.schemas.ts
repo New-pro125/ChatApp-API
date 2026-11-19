@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import { mediaKindSchema } from '@/core/media/media-form.schema.js';
+
+export type { CombinedMediaFieldsSchema, MediaKind } from '@/core/media/media-form.schema.js';
+export { combinedMediaFieldsSchema, mediaKindSchema } from '@/core/media/media-form.schema.js';
 
 /** A text body. The database check constraint allows 1–4096 characters. */
 export const messageBodySchema = z.string().min(1).max(4096);
@@ -56,5 +60,20 @@ export const forwardMessageSchema = z.object({
   targetChatId: z.uuid(),
 });
 
+const optionalMediaMetadata = {
+  caption: z.string().trim().min(1).max(1000).optional(),
+  durationMs: z.number().int().min(1).max(86_400_000).optional(),
+  width: z.number().int().min(1).max(16_384).optional(),
+  height: z.number().int().min(1).max(16_384).optional(),
+  replyToMessageId: z.uuid().optional(),
+};
+
+export const sendMediaMessageSchema = z.object({
+  mediaId: z.uuid(),
+  kind: mediaKindSchema,
+  ...optionalMediaMetadata,
+});
+
 export type SendMessageSchema = z.infer<typeof sendMessageSchema>;
 export type ListMessagesQuerySchema = z.infer<typeof listMessagesQuerySchema>;
+export type SendMediaMessageSchema = z.infer<typeof sendMediaMessageSchema>;

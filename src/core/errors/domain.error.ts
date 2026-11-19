@@ -371,3 +371,11 @@ export class MediaScanUnavailableException extends DomainException {
     super(message, options);
   }
 }
+
+export class MediaInUseException extends DomainException {
+  readonly code = ErrorCode.MEDIA_IN_USE;
+
+  constructor(message = 'Media object is referenced by a message', options?: AppErrorOptions) {
+    super(message, options);
+  }
+}

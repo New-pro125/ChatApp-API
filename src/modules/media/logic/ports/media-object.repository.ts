@@ -9,6 +9,7 @@ export interface CreateMediaObjectInput {
 export interface MediaObjectRepository {
   create(input: CreateMediaObjectInput): Promise<MediaObjectRecord>;
   findOwned(id: string, ownerUserId: string): Promise<MediaObjectRecord | null>;
+  findById(mediaId: string): Promise<MediaObjectRecord | null>;
   transitionToReady(
     id: string,
     ownerUserId: string,

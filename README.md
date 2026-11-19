@@ -224,8 +224,8 @@ to someone else.
 
 Phase 2.4 provides a generic upload pipeline. The bucket stays private: the API
 generates every object key, issues short-lived presigned PUT/GET URLs, and gates
-readiness on a virus scan. Avatar, story, and message integrations are not wired
-to it yet and continue using their placeholder keys.
+readiness on a virus scan. Phase 2.5 connects this pipeline to cloud-chat media
+messages. Secret chats do not support media.
 
 | Method   | Path                      | Purpose                                               |
 | -------- | ------------------------- | ----------------------------------------------------- |
@@ -274,15 +274,17 @@ One-on-one messaging lives in the `messages` module and is mounted at
 `/api/chats`. All routes require a bearer token and a verified email; writes also
 use the shared `rl:messages:` bucket (120 requests per 15 minutes).
 
-| Method   | Path                                             | Description                                |
-| -------- | ------------------------------------------------ | ------------------------------------------ |
-| `POST`   | `/api/chats`                                     | Open (or retrieve) a direct chat           |
-| `GET`    | `/api/chats`                                     | List the caller's chats, most active first |
-| `POST`   | `/api/chats/:chatId/messages`                    | Send a text message                        |
-| `GET`    | `/api/chats/:chatId/messages`                    | List history with keyset pagination        |
-| `PATCH`  | `/api/chats/:chatId/messages/:messageId`         | Edit an owned message                      |
-| `DELETE` | `/api/chats/:chatId/messages/:messageId`         | Soft-delete an owned message               |
-| `POST`   | `/api/chats/:chatId/messages/:messageId/forward` | Forward a message into another chat        |
+| Method   | Path                                             | Description                                 |
+| -------- | ------------------------------------------------ | ------------------------------------------- |
+| `POST`   | `/api/chats`                                     | Open (or retrieve) a direct chat            |
+| `GET`    | `/api/chats`                                     | List the caller's chats, most active first  |
+| `POST`   | `/api/chats/:chatId/messages`                    | Send a text message                         |
+| `GET`    | `/api/chats/:chatId/messages`                    | List history with keyset pagination         |
+| `PATCH`  | `/api/chats/:chatId/messages/:messageId`         | Edit an owned message                       |
+| `DELETE` | `/api/chats/:chatId/messages/:messageId`         | Soft-delete an owned message                |
+| `POST`   | `/api/chats/:chatId/messages/:messageId/forward` | Forward a message into another chat         |
+| `POST`   | `/api/chats/:chatId/messages/media`              | Attach a ready `mediaId` as a media message |
+| `POST`   | `/api/chats/:chatId/messages/media/upload`       | Multipart upload-and-send in one request    |
 
 `POST /api/chats` accepts `{ "participantId": "<uuid>" }`. It returns `201` for a
 new chat and `200` for the existing pair, and every chat response embeds public
@@ -304,6 +306,28 @@ the body into a target chat the caller belongs to and records
 NOT_CHAT_MEMBER` on every chat-scoped operation. Sending and forwarding bump the
 chat's `updated_at`, so a newly active conversation moves to the top of
 `GET /api/chats`.
+
+### Media messages
+
+Media messages use `type: "media"` with `body: null` and a `media` object
+containing `mediaId`, `kind`, `contentType`, `sizeBytes`, optional caption and
+metadata, `downloadUrl`, and `expiresAt`. Kinds are `image`, `video`,
+`document`, `voice_note`, `sticker`, and `gif`; kind must match the scanned
+object's content type. Downloads are short-lived and pinned to the scanned S3
+version. Object keys, version ids, and hashes are never returned in message
+responses.
+
+Attaching requires the sender to own a ready media object. The combined route
+requires `kind`, `sizeBytes`, and one `file` part; text fields must precede the
+file. Sending creates a message only after a clean scan. Infected uploads return
+`422`, scanner outages return `503` with `details.mediaId`, and malformed or
+size-mismatched uploads return `400`.
+
+Forwarding reuses the same media object. Deleting a media message removes its
+reference and deletes the object only when no live message references remain;
+manual media deletion returns `409 MEDIA_IN_USE` while referenced. Media
+messages cannot be edited. Deleting a chat cascades message rows but does not
+trigger media garbage collection in this phase.
 
 ### Two-factor authentication
 
@@ -494,7 +518,12 @@ Domain errors carry no HTTP status. The injected `ErrorMapper` service maps
 domain codes to statuses, converts `UniqueConstraintException` to
 `409 CONFLICT`, sanitizes repository and unknown failures to `INTERNAL_ERROR`,
 and sets `Retry-After` for `AccountLockedException`. Zod and body-parser
-failures are normalized in the same mapper.
+failures are normalized in the same mapper. Principal public domain codes
+include `400 VALIDATION_ERROR`, `401 UNAUTHORIZED`, `403 FORBIDDEN` (with
+`EMAIL_NOT_VERIFIED`, `USER_BLOCKED`, `NOT_CHAT_MEMBER`, and
+`E2EE_NOT_ALLOWED` variants), `404 NOT_FOUND`, `409 CONFLICT` (including
+`MEDIA_IN_USE`), `422 MEDIA_INFECTED`, `423 ACCOUNT_LOCKED`, and
+`503 MEDIA_SCAN_UNAVAILABLE`.
 
 ## Rate limiting
 
@@ -695,5 +724,7 @@ Then they can open and use a secret chat:
 - `GET /api/chats/:chatId/messages`
 
 Secret messages cannot be edited, deleted, forwarded, replied to, or searched.
-Media, self-destruct timers, and a double ratchet are not part of this release.
+Secret messages cannot contain media; media messages are rejected in secret
+chats with `403 E2EE_NOT_ALLOWED`. Self-destruct timers and a double ratchet are
+not part of this release.
 Pre-existing access tokens without the `did` claim must be refreshed.

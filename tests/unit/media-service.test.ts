@@ -1,15 +1,18 @@
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppConfig } from '@/core/config/app.config.js';
 import {
   InvalidMediaInputException,
   MediaInfectedException,
+  MediaInUseException,
   MediaNotFoundException,
   MediaNotReadyException,
   MediaScanUnavailableException,
 } from '@/core/errors/domain.error.js';
+import { BadRequestException } from '@/core/errors/http.error.js';
 import { ObjectStoreException, VirusScannerException } from '@/core/errors/repository.error.js';
+import type { MediaReferenceReader } from '@/core/media/media-reference.port.js';
 import { MediaObjectRecord } from '@/modules/media/logic/entities/media-object-record.js';
 import { MediaService } from '@/modules/media/logic/media.service.js';
 import type { MediaObjectRepository } from '@/modules/media/logic/ports/media-object.repository.js';
@@ -17,6 +20,7 @@ import type { ObjectStore } from '@/modules/media/logic/ports/object-store.js';
 import type { ScanResult, VirusScanner } from '@/modules/media/logic/ports/virus-scanner.js';
 
 const OWNER = '01920000-0000-7000-8000-0000000000aa';
+const OTHER = '01920000-0000-7000-8000-0000000000cc';
 const ID = '01920000-0000-7000-8000-0000000000bb';
 const KEY = `media/${OWNER}/${ID}.png`;
 const VERSION = 'minio-version-1';
@@ -51,7 +55,11 @@ class FakeRepository implements MediaObjectRepository {
     return Promise.resolve(this.seed());
   }
 
-  findOwned(): Promise<MediaObjectRecord | null> {
+  findOwned(id: string, ownerUserId: string): Promise<MediaObjectRecord | null> {
+    return Promise.resolve(id === ID && ownerUserId === OWNER ? this.record : null);
+  }
+
+  findById(): Promise<MediaObjectRecord | null> {
     return Promise.resolve(this.record);
   }
 
@@ -152,6 +160,8 @@ class FakeStore implements ObjectStore {
   deletedKeys: string[] = [];
   getStreamCalls: Array<string | null> = [];
   presignGetCalls: Array<string | null> = [];
+  putStreamCalls: Array<{ objectKey: string; contentType: string; sizeBytes: number }> = [];
+  putStreamRejection: Error | null = null;
 
   presignPut() {
     return Promise.resolve({
@@ -159,6 +169,14 @@ class FakeStore implements ObjectStore {
       headers: { 'Content-Type': 'image/png', 'Content-Length': '5' },
       expiresAt: new Date(),
     });
+  }
+
+  putStream(objectKey: string, contentType: string, sizeBytes: number): Promise<void> {
+    this.putStreamCalls.push({ objectKey, contentType, sizeBytes });
+    if (this.putStreamRejection !== null) {
+      return Promise.reject(this.putStreamRejection);
+    }
+    return Promise.resolve();
   }
 
   presignGet(_objectKey: string, versionId: string | null) {
@@ -222,17 +240,26 @@ const config = (scanRequired = true): AppConfig =>
     },
   }) as unknown as AppConfig;
 
+class FakeReferences implements MediaReferenceReader {
+  live = false;
+  hasLiveReferences(): Promise<boolean> {
+    return Promise.resolve(this.live);
+  }
+}
+
 describe('MediaService', () => {
   let objects: FakeRepository;
   let store: FakeStore;
   let scanner: FakeScanner;
+  let references: FakeReferences;
   let service: MediaService;
 
   beforeEach(() => {
     objects = new FakeRepository();
     store = new FakeStore();
     scanner = new FakeScanner();
-    service = new MediaService(objects, store, scanner, config());
+    references = new FakeReferences();
+    service = new MediaService(objects, store, scanner, config(), references);
   });
 
   it('rejects a type outside the allowlist or a size outside the cap', async () => {
@@ -307,7 +334,7 @@ describe('MediaService', () => {
 
   it('skips scanning only when configuration explicitly disables it', async () => {
     objects.seed();
-    const bypass = new MediaService(objects, store, scanner, config(false));
+    const bypass = new MediaService(objects, store, scanner, config(false), new FakeReferences());
     const result = await bypass.finalize(OWNER, ID);
     expect(result.status).toBe('ready');
     expect(result.sha256).toBeNull();
@@ -343,5 +370,135 @@ describe('MediaService', () => {
     await service.remove(OWNER, ID);
     expect(store.deletedKeys).toEqual([KEY]);
     expect(objects.deleted).toEqual([ID]);
+  });
+
+  it('returns 404 for a non-owner without checking whether the media is in use', async () => {
+    objects.seed('ready');
+    references.live = true;
+    const referenceLookup = vi.spyOn(references, 'hasLiveReferences');
+
+    await expect(service.remove(OTHER, ID)).rejects.toThrow(MediaNotFoundException);
+    expect(referenceLookup).not.toHaveBeenCalled();
+    expect(store.deletedKeys).toEqual([]);
+    expect(objects.deleted).toEqual([]);
+  });
+
+  it('signForReader returns only the redacted download fields', async () => {
+    objects.seed('ready', VERSION);
+    const download = await service.signForReader(ID);
+    expect(download).toEqual({
+      url: `https://download?versionId=${VERSION}`,
+      expiresAt: expect.any(Date),
+      contentType: 'image/png',
+      sizeBytes: 5,
+    });
+    expect(Object.keys(download).sort()).toEqual(['contentType', 'expiresAt', 'sizeBytes', 'url']);
+  });
+
+  it('signForReader rejects a non-ready asset', async () => {
+    objects.seed('quarantined', VERSION);
+    await expect(service.signForReader(ID)).rejects.toThrow(MediaNotReadyException);
+  });
+
+  it('storeAndScan rethrows a scanner outage with mediaId and keeps the row pending', async () => {
+    scanner.mode = 'unavailable';
+    const input = {
+      contentType: 'image/png',
+      sizeBytes: 5,
+      body: Readable.from([Buffer.from('bytes')]),
+      assertComplete: () => Promise.resolve(),
+    };
+    const rejection = await service.storeAndScan(OWNER, input).catch((error: unknown) => error);
+    expect(rejection).toBeInstanceOf(MediaScanUnavailableException);
+    expect(rejection).toMatchObject({ details: { mediaId: ID } });
+    expect(objects.record?.status).toBe('pending');
+    expect(objects.markFailedCalls).toBe(0);
+  });
+
+  it('storeAndScan marks the row failed when HEAD metadata does not match the ticket', async () => {
+    store.metadata = { contentType: 'image/gif', sizeBytes: 5, versionId: VERSION };
+    const input = {
+      contentType: 'image/png',
+      sizeBytes: 5,
+      body: Readable.from([Buffer.from('bytes')]),
+      assertComplete: () => Promise.resolve(),
+    };
+    await expect(service.storeAndScan(OWNER, input)).rejects.toThrow(InvalidMediaInputException);
+    expect(objects.failed).toEqual(['Uploaded object metadata does not match ticket']);
+    expect(objects.markFailedCalls).toBe(1);
+    expect(objects.record?.status).toBe('failed');
+    expect(objects.record?.versionId).toBe(VERSION);
+  });
+
+  it('storeAndScan marks the row failed when the scan stream raises a storage error', async () => {
+    store.failStream = true;
+    const input = {
+      contentType: 'image/png',
+      sizeBytes: 5,
+      body: Readable.from([Buffer.from('bytes')]),
+      assertComplete: () => Promise.resolve(),
+    };
+    const rejection = await service.storeAndScan(OWNER, input).catch((error: unknown) => error);
+    expect(rejection).toBeInstanceOf(ObjectStoreException);
+    expect(objects.record?.status).toBe('failed');
+    expect(objects.markFailedCalls).toBe(1);
+    expect(objects.record?.versionId).toBe(VERSION);
+  });
+
+  it('handles a fast storage rejection while multipart validation is still pending', async () => {
+    store.putStreamRejection = new ObjectStoreException('Failed to upload media object stream');
+    const validationError = new BadRequestException('File size does not match sizeBytes');
+    let rejectCompletion!: (error: unknown) => void;
+    const completion = new Promise<void>((_resolve, reject) => {
+      rejectCompletion = reject;
+    });
+    completion.catch(() => {});
+    const input = {
+      contentType: 'image/png',
+      sizeBytes: 5,
+      body: Readable.from([Buffer.from('bytes')]),
+      assertComplete: () => completion,
+    };
+
+    const unhandled: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on('unhandledRejection', onUnhandledRejection);
+    try {
+      const pending = service.storeAndScan(OWNER, input);
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+      expect(unhandled).toEqual([]);
+      rejectCompletion(validationError);
+      const rejection = await pending.catch((error: unknown) => error);
+      expect(rejection).toBe(validationError);
+      expect(unhandled).toEqual([]);
+      expect(objects.record?.status).toBe('failed');
+      expect(objects.markFailedCalls).toBe(1);
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection);
+    }
+  });
+
+  it('releaseIfUnreferenced is a no-op while a live reference exists', async () => {
+    objects.seed('ready', VERSION);
+    references.live = true;
+    await service.releaseIfUnreferenced(ID);
+    expect(store.deletedKeys).toEqual([]);
+    expect(objects.deleted).toEqual([]);
+
+    references.live = false;
+    await service.releaseIfUnreferenced(ID);
+    expect(store.deletedKeys).toEqual([KEY]);
+    expect(objects.deleted).toEqual([ID]);
+  });
+
+  it('assertDeletable rejects while a live reference exists', async () => {
+    references.live = true;
+    await expect(service.assertDeletable(ID)).rejects.toThrow(MediaInUseException);
+    references.live = false;
+    await expect(service.assertDeletable(ID)).resolves.toBeUndefined();
   });
 });

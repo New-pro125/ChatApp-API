@@ -122,7 +122,11 @@ export class ApiDocumentBuilder {
         : {
             requestBody: {
               required: true,
-              content: { 'application/json': { schema: contract.request.body } },
+              content: {
+                [contract.request.contentType ?? 'application/json']: {
+                  schema: contract.request.body,
+                },
+              },
             },
           }),
       responses,

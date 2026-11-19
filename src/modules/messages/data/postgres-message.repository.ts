@@ -40,6 +40,12 @@ export class PostgresMessageRepository implements MessageRepository {
             senderId: input.senderId,
             type: input.type ?? 'text',
             body: input.body,
+            mediaId: input.media?.mediaId ?? null,
+            mediaKind: input.media?.kind ?? null,
+            caption: input.media?.caption ?? null,
+            durationMs: input.media?.durationMs ?? null,
+            width: input.media?.width ?? null,
+            height: input.media?.height ?? null,
             replyToMessageId: input.replyToMessageId ?? null,
             forwardedFromChatId: input.forwardedFromChatId ?? null,
             forwardedFromMessageId: input.forwardedFromMessageId ?? null,
@@ -160,13 +166,35 @@ export class PostgresMessageRepository implements MessageRepository {
     try {
       const rows = await this.db
         .update(messages)
-        .set({ deletedAt })
+        .set({
+          deletedAt,
+          mediaId: null,
+          mediaKind: null,
+          caption: null,
+          durationMs: null,
+          width: null,
+          height: null,
+        })
         .where(and(eq(messages.chatId, chatId), eq(messages.id, id), isNull(messages.deletedAt)))
         .returning({ id: messages.id });
 
       return rows.length > 0;
     } catch (error) {
       throw new PersistenceException('Failed to delete message', { cause: error });
+    }
+  }
+
+  async hasLiveMediaReferences(mediaId: string): Promise<boolean> {
+    try {
+      const rows = await this.db
+        .select({ id: messages.id })
+        .from(messages)
+        .where(and(eq(messages.mediaId, mediaId), isNull(messages.deletedAt)))
+        .limit(1);
+
+      return rows.length > 0;
+    } catch (error) {
+      throw new PersistenceException('Failed to check media references', { cause: error });
     }
   }
 }
