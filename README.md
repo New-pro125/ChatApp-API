@@ -34,15 +34,24 @@ Each module owns a child container whose parent is the root `AppContainer`. Ever
 
 ## Ports
 
-| Service      | Host port |
-| ------------ | --------: |
-| API          |      4000 |
-| PostgreSQL   |      5434 |
-| Redis        |      6381 |
-| Adminer      |      8088 |
-| RedisInsight |      5540 |
-| Mailpit SMTP |      1025 |
-| Mailpit UI   |      8025 |
+| Service               | Host port |
+| --------------------- | --------: |
+| API                   |      4000 |
+| PostgreSQL            |      5434 |
+| Redis                 |      6381 |
+| MinIO API             |      9000 |
+| MinIO console         |      9001 |
+| ClamAV (scan profile) |      3310 |
+| Adminer               |      8088 |
+| RedisInsight          |      5540 |
+| Mailpit SMTP          |      1025 |
+| Mailpit UI            |      8025 |
+
+Presigned media URLs use the host-reachable `MEDIA_ENDPOINT` (`http://localhost:9000`
+locally), so clients and `curl` can fetch objects from the host. Inside Docker,
+the API and `storage-init` talk to the S3 backend through the `minio:9000`
+service name instead. ClamAV is optional; its port is exposed only when the
+`scan` profile is enabled.
 
 ## Local development
 
@@ -51,10 +60,16 @@ Databases run in Docker; the API runs on the host.
 ```bash
 cp .env.example .env
 npm ci
-docker compose up -d postgres redis
+docker compose up -d postgres redis minio storage-init
 npm run db:migrate
 npm run dev
 ```
+
+`minio` and `storage-init` are required for the test suite as well as local
+media uploads, so start them before running `npm test` or `npm run verify`.
+ClamAV is optional: start it only when you want scanned uploads to succeed with
+`docker compose --profile scan up -d`. Without it, uploads fail closed with
+`503 MEDIA_SCAN_UNAVAILABLE` unless scanning is explicitly disabled.
 
 Optional tools:
 
@@ -204,6 +219,54 @@ is `nobody` the response is an empty list rather than `403`, so the setting is
 not leaked; an unknown user also returns an empty list. `DELETE /api/stories/:id`
 returns `204` for an owned story and `404` when the story is missing or belongs
 to someone else.
+
+### Media uploads
+
+Phase 2.4 provides a generic upload pipeline. The bucket stays private: the API
+generates every object key, issues short-lived presigned PUT/GET URLs, and gates
+readiness on a virus scan. Avatar, story, and message integrations are not wired
+to it yet and continue using their placeholder keys.
+
+| Method   | Path                      | Purpose                                               |
+| -------- | ------------------------- | ----------------------------------------------------- |
+| `POST`   | `/api/media/uploads`      | Create a pending object and presigned `PUT` ticket    |
+| `POST`   | `/api/media/:id/finalize` | Recheck S3 metadata, scan, and mark ready/quarantined |
+| `GET`    | `/api/media/:id`          | Get a fresh presigned `GET` URL for a ready object    |
+| `DELETE` | `/api/media/:id`          | Delete the object and its row                         |
+
+All four routes require bearer authentication, a verified email, and the
+`rl:media:` limiter. `POST /api/media/uploads` accepts
+`{ "contentType": "image/png", "sizeBytes": 1234 }`; the type must appear in
+`MEDIA_ALLOWED_CONTENT_TYPES` and the size must be between 1 and
+`MEDIA_MAX_BYTES` (default 52428800). The response contains `mediaId`,
+`objectKey`, `uploadUrl`, exact `Content-Type`/`Content-Length` headers to send,
+and `expiresAt`. Upload the bytes directly to `uploadUrl`, then call finalize.
+
+Finalize returns `200` with `downloadUrl` for a clean object and a SHA-256 hash.
+An infected object becomes `quarantined` and returns `422 MEDIA_INFECTED` with
+no download URL. A missing object returns `404`, mismatched metadata returns
+`400` and marks the row `failed`, a scanner outage returns `503
+MEDIA_SCAN_UNAVAILABLE` and leaves the row `pending` for retry, and finalizing a
+non-pending object returns `409 MEDIA_NOT_READY`. Setting
+`MEDIA_SCAN_REQUIRED=false` explicitly skips scanning and yields a ready object
+with a null hash; never do this in production.
+
+S3 object versioning is required on `MEDIA_BUCKET` in production. Finalize reads
+the version id from S3 HEAD, scans exactly that version, stores it in
+`media_objects.version_id`, and signs both the finalize response and later GET
+URLs with the same `VersionId`. A client that reuses its presigned PUT to
+overwrite the key cannot change the bytes served by a URL issued for the
+scanned version. The local `storage-init` service enables bucket versioning;
+buckets without versioning yield a null version id and the API falls back to
+unpinned reads, which does not provide this guarantee.
+
+An unrecoverable storage or metadata error marks the row `failed` and surfaces
+as `500 INTERNAL_ERROR` through the shared error model. Only a scanner outage
+leaves the row `pending` for retry with `503 MEDIA_SCAN_UNAVAILABLE`.
+
+Cross-user access always returns `404 NOT_FOUND` without revealing object keys
+or download URLs. Objects are deleted from storage before their database rows,
+so a storage failure leaves the row available for retry.
 
 ### Messaging
 
@@ -496,6 +559,31 @@ trust, the CORS allowlist, and readiness caching. `SMTP_TIMEOUT_MS` bounds SMTP
 connection, greeting, and socket waits. See `.env.example` for the full list of
 database pool, HTTP hardening, auth hardening, OTP, email verification, stories,
 messaging, captcha, MFA, SMTP, OAuth, SSO, and Docker Compose options.
+
+### Media uploads and scanning
+
+| Variable                      | Default                                                                                                                   | Purpose                                              |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `MEDIA_BUCKET`                | `messenger-media`                                                                                                         | Private S3 bucket that holds media objects.          |
+| `MEDIA_REGION`                | `us-east-1`                                                                                                               | Region used to sign S3 requests.                     |
+| `MEDIA_ENDPOINT`              | `http://localhost:9000`                                                                                                   | Host-reachable endpoint embedded in presigned URLs.  |
+| `MEDIA_ACCESS_KEY_ID`         | required (no default)                                                                                                     | S3 access key id supplied by the deployment.         |
+| `MEDIA_SECRET_ACCESS_KEY`     | required (no default)                                                                                                     | S3 secret access key supplied by the deployment.     |
+| `MEDIA_FORCE_PATH_STYLE`      | `true`                                                                                                                    | Use path-style S3 URLs (required by MinIO).          |
+| `MEDIA_MAX_BYTES`             | `52428800`                                                                                                                | Largest accepted upload, in bytes (50 MiB).          |
+| `MEDIA_ALLOWED_CONTENT_TYPES` | `image/jpeg,image/png,image/gif,image/webp,video/mp4,audio/mpeg,application/pdf,application/zip,application/octet-stream` | Comma-separated MIME allowlist for uploads.          |
+| `MEDIA_PRESIGN_TTL_SECONDS`   | `300`                                                                                                                     | Lifetime of presigned PUT and GET URLs.              |
+| `MEDIA_SCAN_REQUIRED`         | `true`                                                                                                                    | Fail closed when no scanner is available.            |
+| `CLAMAV_HOST`                 | `127.0.0.1`                                                                                                               | ClamAV daemon host used for INSTREAM scans.          |
+| `CLAMAV_PORT`                 | `3310`                                                                                                                    | ClamAV daemon port.                                  |
+| `CLAMAV_TIMEOUT_MS`           | `10000`                                                                                                                   | Timeout for one scan request, in milliseconds.       |
+| `CLAMAV_HOST_PORT`            | `3310`                                                                                                                    | Host port published by the Compose `clamav` service. |
+
+`MEDIA_SCAN_REQUIRED` defaults to `true`: an unreachable scanner makes finalize
+return `503 MEDIA_SCAN_UNAVAILABLE` and leaves the object pending for retry. No
+`NODE_ENV` check changes that default. Setting `MEDIA_SCAN_REQUIRED=false` is the
+only bypass, is meant for local development and tests, and must never be used in
+production.
 
 ## Scripts
 

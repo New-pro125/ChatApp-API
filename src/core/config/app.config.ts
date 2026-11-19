@@ -111,6 +111,58 @@ export class StoryConfig {
   }
 }
 
+const DEFAULT_MEDIA_CONTENT_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'video/mp4',
+  'audio/mpeg',
+  'application/pdf',
+  'application/zip',
+  'application/octet-stream',
+] as const;
+
+export class MediaConfig {
+  constructor(
+    readonly bucket: string,
+    readonly region: string,
+    readonly endpoint: string,
+    readonly accessKeyId: string,
+    readonly secretAccessKey: string,
+    readonly forcePathStyle: boolean,
+    readonly maxBytes: number,
+    readonly allowedContentTypes: readonly string[],
+    readonly presignTtlSeconds: number,
+    readonly scanRequired: boolean,
+  ) {
+    if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
+      throw new Error('MEDIA_MAX_BYTES must be a positive integer');
+    }
+    if (!Number.isInteger(presignTtlSeconds) || presignTtlSeconds <= 0) {
+      throw new Error('MEDIA_PRESIGN_TTL_SECONDS must be a positive integer');
+    }
+    if (allowedContentTypes.length === 0) {
+      throw new Error('MEDIA_ALLOWED_CONTENT_TYPES must contain at least one type');
+    }
+  }
+}
+
+export class ClamAvConfig {
+  constructor(
+    readonly host: string,
+    readonly port: number,
+    readonly timeoutMs: number,
+  ) {
+    if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
+      throw new Error('CLAMAV_PORT must be a valid TCP port');
+    }
+    if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
+      throw new Error('CLAMAV_TIMEOUT_MS must be a positive integer');
+    }
+  }
+}
+
 export class CaptchaConfig {
   constructor(
     readonly enabled: boolean,
@@ -288,6 +340,8 @@ export class AppConfig {
   readonly otp: OtpConfig;
   readonly verification: EmailVerificationConfig;
   readonly stories: StoryConfig;
+  readonly media: MediaConfig;
+  readonly clamAv: ClamAvConfig;
   readonly captcha: CaptchaConfig;
   readonly mfa: MfaConfig;
   readonly smtp: SmtpConfig;
@@ -369,6 +423,27 @@ export class AppConfig {
     );
 
     this.stories = new StoryConfig(env.readNumber('STORY_TTL_SECONDS', 86_400));
+
+    this.media = new MediaConfig(
+      env.readRequired('MEDIA_BUCKET'),
+      env.readString('MEDIA_REGION', 'us-east-1'),
+      env.readString('MEDIA_ENDPOINT', 'http://localhost:9000'),
+      env.readRequired('MEDIA_ACCESS_KEY_ID'),
+      env.readRequired('MEDIA_SECRET_ACCESS_KEY'),
+      env.readBoolean('MEDIA_FORCE_PATH_STYLE', true),
+      env.readNumber('MEDIA_MAX_BYTES', 52_428_800),
+      this.parseCsv(
+        env.readString('MEDIA_ALLOWED_CONTENT_TYPES', DEFAULT_MEDIA_CONTENT_TYPES.join(',')),
+      ),
+      env.readNumber('MEDIA_PRESIGN_TTL_SECONDS', 300),
+      env.readBoolean('MEDIA_SCAN_REQUIRED', true),
+    );
+
+    this.clamAv = new ClamAvConfig(
+      env.readString('CLAMAV_HOST', '127.0.0.1'),
+      env.readNumber('CLAMAV_PORT', 3310),
+      env.readNumber('CLAMAV_TIMEOUT_MS', 10_000),
+    );
 
     this.captcha = new CaptchaConfig(
       env.readBoolean('CAPTCHA_ENABLED', false),
@@ -458,6 +533,22 @@ export class AppConfig {
     const hops = Number(raw);
 
     return Number.isInteger(hops) && hops >= 0 ? hops : raw;
+  }
+
+  private parseCsv(raw: string): readonly string[] {
+    const seen = new Set<string>();
+    const values: string[] = [];
+
+    for (const part of raw.split(',')) {
+      const value = part.trim();
+
+      if (value.length > 0 && !seen.has(value)) {
+        seen.add(value);
+        values.push(value);
+      }
+    }
+
+    return values;
   }
 
   private parseOrigins(raw: string): readonly string[] {
