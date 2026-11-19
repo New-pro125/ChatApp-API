@@ -11,6 +11,7 @@ export class MessagePresenter {
   async present(
     message: MessageRecord,
     receipts?: ReadReceiptContext,
+    pinnedAtById: ReadonlyMap<string, Date> = new Map(),
   ): Promise<Record<string, unknown>> {
     const base = {
       id: message.id,
@@ -25,6 +26,7 @@ export class MessagePresenter {
       deletedAt: message.deletedAt?.toISOString() ?? null,
       createdAt: message.createdAt.toISOString(),
       readAt: this.readAt(message, receipts),
+      pinnedAt: pinnedAtById.get(message.id)?.toISOString() ?? null,
       ciphertext: message.ciphertext,
       nonce: message.nonce,
       ephemeralPublicKey: message.ephemeralPublicKey,

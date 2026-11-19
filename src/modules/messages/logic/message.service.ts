@@ -21,6 +21,7 @@ import type {
   ListMessagesQuery,
   MessageRepository,
 } from '@/modules/messages/logic/ports/message.repository.js';
+import type { MessagePinRepository } from '@/modules/messages/logic/ports/message-pin.repository.js';
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 
 /** Text payload accepted when sending a message. */
@@ -70,6 +71,7 @@ export class MessageService {
     @inject(MESSAGES_TYPES.MessagingPolicy) private readonly policy: MessagingPolicy,
     @inject(MESSAGES_TYPES.ChatRepository) private readonly chats: ChatRepository,
     @inject(MESSAGES_TYPES.ChatMemberRepository) private readonly members: ChatMemberRepository,
+    @inject(MESSAGES_TYPES.MessagePinRepository) private readonly pins: MessagePinRepository,
     @inject(CORE_TYPES.E2eeDeviceReader) private readonly e2eeDevices: E2eeDeviceReader,
     @inject(CORE_TYPES.E2eeCiphertextValidator)
     private readonly ciphertextValidator: E2eeCiphertextValidator,
@@ -273,6 +275,7 @@ export class MessageService {
     const mediaId = message.media?.mediaId ?? null;
 
     await this.messages.markDeleted(chatId, messageId, new Date());
+    await this.pins.removeForMessage(chatId, messageId);
 
     if (mediaId !== null) {
       await this.mediaAccess.releaseIfUnreferenced(mediaId);
