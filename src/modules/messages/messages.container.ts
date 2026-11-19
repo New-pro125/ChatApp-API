@@ -7,6 +7,7 @@ import { PostgresChatRepository } from '@/modules/messages/data/postgres-chat.re
 import { PostgresChatMemberRepository } from '@/modules/messages/data/postgres-chat-member.repository.js';
 import { PostgresMessageRepository } from '@/modules/messages/data/postgres-message.repository.js';
 import { ChatService } from '@/modules/messages/logic/chat.service.js';
+import { MediaKindPolicy } from '@/modules/messages/logic/media-kind.policy.js';
 import { MediaReferenceReaderService } from '@/modules/messages/logic/media-reference-reader.service.js';
 import { MessageService } from '@/modules/messages/logic/message.service.js';
 import { MessagingPolicy } from '@/modules/messages/logic/messaging-policy.service.js';
@@ -45,6 +46,9 @@ export class MessagesContainer extends Container {
       .inSingletonScope();
     this.bind<ChatService>(MESSAGES_TYPES.ChatService).to(ChatService).inSingletonScope();
     this.bind<MessageService>(MESSAGES_TYPES.MessageService).to(MessageService).inSingletonScope();
+    this.bind<MediaKindPolicy>(MESSAGES_TYPES.MediaKindPolicy)
+      .to(MediaKindPolicy)
+      .inSingletonScope();
     this.bind<MediaReferenceReaderService>(MESSAGES_TYPES.MediaReferenceReader)
       .to(MediaReferenceReaderService)
       .inSingletonScope();
