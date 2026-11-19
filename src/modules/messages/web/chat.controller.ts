@@ -81,6 +81,7 @@ export class ChatController {
       id: chat.id,
       type: chat.type,
       title: chat.title,
+      unreadCount: chat.unreadCount,
       participants: chat.participants.map((participant) => ({
         userId: participant.id,
         username: participant.username,

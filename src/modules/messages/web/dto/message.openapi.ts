@@ -42,6 +42,7 @@ export const chatSchema = z
     id: z.uuid(),
     type: z.enum(['direct', 'secret', 'group', 'channel']),
     title: z.string().nullable(),
+    unreadCount: z.number().int().nonnegative(),
     participants: z.array(participantSummarySchema),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),

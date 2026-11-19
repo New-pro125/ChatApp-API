@@ -10,6 +10,7 @@ import { ChatView } from '@/modules/messages/logic/entities/chat-view.js';
 import type { MessagingPolicy } from '@/modules/messages/logic/messaging-policy.service.js';
 import type { ChatRepository } from '@/modules/messages/logic/ports/chat.repository.js';
 import type { ChatMemberRepository } from '@/modules/messages/logic/ports/chat-member.repository.js';
+import type { MessageRepository } from '@/modules/messages/logic/ports/message.repository.js';
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 
 export interface OpenDirectResult {
@@ -23,6 +24,7 @@ export class ChatService {
   constructor(
     @inject(MESSAGES_TYPES.ChatRepository) private readonly chats: ChatRepository,
     @inject(MESSAGES_TYPES.ChatMemberRepository) private readonly members: ChatMemberRepository,
+    @inject(MESSAGES_TYPES.MessageRepository) private readonly messages: MessageRepository,
     @inject(MESSAGES_TYPES.MessagingPolicy) private readonly policy: MessagingPolicy,
     @inject(CORE_TYPES.UserSummaryReader) private readonly users: UserSummaryReader,
     @inject(CORE_TYPES.E2eeDeviceReader) private readonly e2eeDevices: E2eeDeviceReader,
@@ -94,6 +96,11 @@ export class ChatService {
       return [];
     }
 
+    const unread = await this.messages.countUnreadByChats(
+      userId,
+      chats.map((chat) => chat.id),
+    );
+
     const memberships = await this.members.listByChats(chats.map((chat) => chat.id));
     const userIds = [...new Set(memberships.map((membership) => membership.userId))];
     const summaries = await this.users.findSummaries(userIds);
@@ -110,7 +117,9 @@ export class ChatService {
       }
     }
 
-    return chats.map((chat) => new ChatView(chat, byChat.get(chat.id) ?? []));
+    return chats.map(
+      (chat) => new ChatView(chat, byChat.get(chat.id) ?? [], unread.get(chat.id) ?? 0),
+    );
   }
 
   /**
@@ -196,7 +205,7 @@ export class ChatService {
       return summary ? [summary] : [];
     });
 
-    return new ChatView(chat, participants);
+    return new ChatView(chat, participants, 0);
   }
 
   /** Order-independent key so either side can open the same direct chat. */

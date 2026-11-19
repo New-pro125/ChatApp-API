@@ -148,4 +148,67 @@ describe('Read receipts', () => {
     expect(after.body.data[0].nonce).toBe(sent.body.data.nonce);
     expect(after.body.data[0].body).toBeNull();
   });
+
+  it('reports caller-private unread counts that clear on mark-read', async () => {
+    const { alice, bob, chatId } = await createPair();
+    await send(bob.headers, chatId, 'one');
+    await send(bob.headers, chatId, 'two');
+    await send(alice.headers, chatId, 'mine');
+
+    async function unreadFor(headers: Record<string, string>): Promise<number> {
+      const chats = expectSuccess<Array<{ id: string; unreadCount: number }>>(
+        await app.request.get('/api/chats').set(headers),
+        200,
+      );
+      return chats.find((chat) => chat.id === chatId)?.unreadCount ?? -1;
+    }
+
+    expect(await unreadFor(alice.headers)).toBe(2);
+    expect(await unreadFor(bob.headers)).toBe(1);
+
+    // History GET must not mutate read state.
+    await app.request.get(`/api/chats/${chatId}/messages`).set(alice.headers);
+    expect(await unreadFor(alice.headers)).toBe(2);
+
+    // Unread counts stay caller-private when the peer disables receipts.
+    await app.request
+      .patch('/api/auth/me/privacy')
+      .set(bob.headers)
+      .send({ readReceiptsEnabled: false });
+    expect(await unreadFor(alice.headers)).toBe(2);
+
+    await markRead(alice.headers, chatId);
+    expect(await unreadFor(alice.headers)).toBe(0);
+    expect(await unreadFor(bob.headers)).toBe(1);
+  });
+
+  it('reports unread counts for secret chats and chats with no messages', async () => {
+    const alice = await fixture.verifiedUser('Alice Secret');
+    const bob = await fixture.verifiedUser('Bob Secret');
+    await fixture.registerDevice(alice);
+    const bobDevice = await fixture.registerDevice(bob);
+    const secretChatId = await fixture.openSecretChat(bob.id, alice.headers);
+    const emptyChatId = await fixture.openDirectChat(
+      (await fixture.verifiedUser('Charlie')).id,
+      bob.headers,
+    );
+
+    await app.request
+      .post(`/api/chats/${secretChatId}/secret-messages`)
+      .set(alice.headers)
+      .send({
+        recipientDeviceId: bobDevice.deviceId,
+        ciphertext: Buffer.from('ciphertext').toString('base64url'),
+        nonce: 'A'.repeat(16),
+        ephemeralPublicKey: 'A'.repeat(43),
+      });
+
+    const chats = expectSuccess<Array<{ id: string; unreadCount: number }>>(
+      await app.request.get('/api/chats').set(bob.headers),
+      200,
+    );
+
+    expect(chats.find((chat) => chat.id === secretChatId)?.unreadCount).toBe(1);
+    expect(chats.find((chat) => chat.id === emptyChatId)?.unreadCount).toBe(0);
+  });
 });
