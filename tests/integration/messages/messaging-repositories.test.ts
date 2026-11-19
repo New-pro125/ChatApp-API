@@ -299,4 +299,14 @@ describe('Messaging repositories', () => {
     expect(await members.listByChat(chatId)).toEqual([]);
     expect(await chats.delete(chatId)).toBe(false);
   });
+
+  it('returns null read watermarks for a fresh membership', async () => {
+    const owner = await auth.createUser();
+    const chatId = await createGroupChat(owner.id);
+
+    const membership = await members.find(chatId, owner.id);
+
+    expect(membership?.lastReadMessageId).toBeNull();
+    expect(membership?.lastReadAt).toBeNull();
+  });
 });
