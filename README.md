@@ -337,20 +337,22 @@ Pins are private, per-user bookmarks on live messages. Both direct cloud chats
 and secret chats are supported, and pinning only stores metadata: secret-chat
 ciphertext, nonce, and device ids are never read or changed. `POST /pin` requires
 `{ "durationSeconds": 3600 }` with an integer from 60 (1 minute) to 604800
-(7 days); invalid values return `400 VALIDATION_ERROR`. Each pin expires at
-`pinnedAt + durationSeconds` according to the server clock. Once elapsed, a pin
-is hidden from `GET /pins` and from message history (both `pinnedAt` and
-`pinExpiresAt` become `null`) and immediately stops counting toward the ten-pin
-cap. A pin can be created again after expiry; pinning an active message again is
-idempotent and keeps the original timestamps. `POST /pin` returns `expiresAt`
-and message views plus `GET /pins` return `pinExpiresAt`. A BullMQ repeatable job
-physically deletes elapsed rows every `PIN_CLEANUP_INTERVAL_MINUTES` (default 5),
-but read-time filtering is authoritative, so a Redis or job outage never exposes
-an expired pin. `DELETE /api/chats/:chatId/messages/:messageId/pin` is idempotent
-and returns `204` even when no pin exists. `GET /api/chats/:chatId/pins` returns
-the caller's active pins newest-first as full message views; the other
-participant's pins are never listed or exposed. Soft-deleting a message removes
-all of its pins.
+(7 days); invalid values return `400 VALIDATION_ERROR`. The server computes
+`expiresAt` from its own clock when the pin is created; clients never supply an
+absolute deadline. Once elapsed, a pin is hidden from `GET /pins` and from
+message history (both `pinnedAt` and `pinExpiresAt` become `null`) and immediately
+stops counting toward the ten-pin cap. A pin can be created again after expiry;
+pinning an active message again is idempotent and keeps the original timestamps.
+`POST /pin` returns `expiresAt` and message views plus `GET /pins` return
+`pinExpiresAt`. A BullMQ repeatable job physically deletes elapsed rows every
+`PIN_CLEANUP_INTERVAL_MINUTES` (default 5), but read-time filtering is
+authoritative, so a Redis or job outage never exposes an expired pin. Pins
+created before this change were backfilled to expire one day after deployment;
+they are not permanent. `DELETE /api/chats/:chatId/messages/:messageId/pin` is
+idempotent and returns `204` even when no pin exists.
+`GET /api/chats/:chatId/pins` returns the caller's active pins newest-first as
+full message views; the other participant's pins are never listed or exposed.
+Soft-deleting a message removes all of its pins.
 
 ### Media messages
 

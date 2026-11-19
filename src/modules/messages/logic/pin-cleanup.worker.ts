@@ -40,6 +40,9 @@ export class PinCleanupWorker {
     this.worker.on('error', (error: Error) => {
       this.logger.error({ err: error }, 'Pin cleanup worker error');
     });
+    this.worker.on('failed', (job, error) => {
+      this.logger.error({ err: error, jobId: job?.id }, 'Pin cleanup job failed');
+    });
 
     await this.queue.upsertJobScheduler(
       REPEAT_KEY,
@@ -50,6 +53,10 @@ export class PinCleanupWorker {
         opts: { removeOnComplete: true, removeOnFail: 100 },
       },
     );
+  }
+
+  isRunning(): boolean {
+    return this.worker?.isRunning() ?? false;
   }
 
   async process(_job?: Job): Promise<{ deleted: number }> {

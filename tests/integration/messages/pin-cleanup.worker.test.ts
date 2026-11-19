@@ -1,3 +1,4 @@
+import { Queue } from 'bullmq';
 import { Container } from 'inversify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { PinCleanupWorker } from '@/modules/messages/logic/pin-cleanup.worker.js';
@@ -28,9 +29,26 @@ describe('PinCleanupWorker', () => {
     messages = container.get(MESSAGES_TYPES.MessageRepository);
     pins = container.get(MESSAGES_TYPES.MessagePinRepository);
     worker = container.get(MESSAGES_TYPES.PinCleanupWorker);
+    await worker.start();
+
+    // Check the scheduler before beforeEach flushes Redis.
+    const queue = new Queue('pin-cleanup', { connection: app.redis });
+    try {
+      const schedulers = await queue.getJobSchedulers();
+      expect(schedulers).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'delete-expired-pins', every: 300_000 }),
+        ]),
+      );
+    } finally {
+      await queue.close();
+    }
+    expect(worker.isRunning()).toBe(true);
   });
 
   afterAll(async () => {
+    await worker.close();
+    expect(worker.isRunning()).toBe(false);
     await worker.close();
     await app.close();
   });
