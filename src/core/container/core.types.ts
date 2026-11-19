@@ -16,6 +16,8 @@ export const CORE_TYPES = {
   UserSummaryReader: Symbol.for('Core.UserSummaryReader'),
   E2eeDeviceReader: Symbol.for('Core.E2eeDeviceReader'),
   E2eeCiphertextValidator: Symbol.for('Core.E2eeCiphertextValidator'),
+  MediaAccess: Symbol.for('Core.MediaAccess'),
+  MediaReferenceReader: Symbol.for('Core.MediaReferenceReader'),
   RequireAuth: Symbol.for('Core.RequireAuth'),
   RequireVerifiedEmail: Symbol.for('Core.RequireVerifiedEmail'),
 

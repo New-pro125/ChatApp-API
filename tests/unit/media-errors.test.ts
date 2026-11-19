@@ -3,6 +3,7 @@ import type { AppConfig } from '@/core/config/app.config.js';
 import {
   InvalidMediaInputException,
   MediaInfectedException,
+  MediaInUseException,
   MediaNotFoundException,
   MediaNotReadyException,
   MediaScanUnavailableException,
@@ -18,6 +19,7 @@ describe('Media error mapping', () => {
     [new InvalidMediaInputException(), 400, ErrorCode.VALIDATION_ERROR],
     [new MediaNotFoundException(), 404, ErrorCode.NOT_FOUND],
     [new MediaNotReadyException(), 409, ErrorCode.MEDIA_NOT_READY],
+    [new MediaInUseException(), 409, ErrorCode.MEDIA_IN_USE],
     [new MediaInfectedException(), 422, ErrorCode.MEDIA_INFECTED],
     [new MediaScanUnavailableException(), 503, ErrorCode.MEDIA_SCAN_UNAVAILABLE],
   ])('maps %s', (error, status, code) => {

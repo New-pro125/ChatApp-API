@@ -6,6 +6,7 @@ export interface OpenApiRequestContract {
   params?: ZodType;
   query?: ZodType;
   body?: ZodType;
+  contentType?: 'application/json' | 'multipart/form-data';
 }
 
 export interface OpenApiResponseContract {
