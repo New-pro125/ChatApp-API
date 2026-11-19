@@ -165,4 +165,109 @@ describe('media message attach mode', () => {
       'MEDIA_NOT_READY',
     );
   });
+
+  it('uploads and sends a clean file in one request', async () => {
+    const sender = await messaging.verifiedUser('Sender');
+    const recipient = await messaging.verifiedUser('Recipient');
+    const chatId = await messaging.openDirectChat(recipient.id, sender.headers);
+
+    const response = await app.request
+      .post(`/api/chats/${chatId}/messages/media/upload`)
+      .set(sender.headers)
+      .field('kind', 'image')
+      .field('sizeBytes', '11')
+      .attach('file', Buffer.from('clean-bytes'), { filename: 'x.png', contentType: 'image/png' });
+
+    const message = expectSuccess<{ media: { downloadUrl: string; contentType: string } }>(
+      response,
+      201,
+    );
+    expect(message.media.contentType).toBe('image/png');
+    const download = await fetch(message.media.downloadUrl);
+    expect(await download.text()).toBe('clean-bytes');
+  });
+
+  it('rejects infected combined uploads without creating a message', async () => {
+    media.scanner.mode = 'infected';
+    const sender = await messaging.verifiedUser('Sender');
+    const recipient = await messaging.verifiedUser('Recipient');
+    const chatId = await messaging.openDirectChat(recipient.id, sender.headers);
+    const eicar = Buffer.from(
+      'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*',
+    );
+
+    const response = await app.request
+      .post(`/api/chats/${chatId}/messages/media/upload`)
+      .set(sender.headers)
+      .field('kind', 'document')
+      .field('sizeBytes', String(eicar.length))
+      .attach('file', eicar, { filename: 'eicar.txt', contentType: 'application/octet-stream' });
+
+    expectError(response, 422, 'MEDIA_INFECTED');
+    const listed = await app.request.get(`/api/chats/${chatId}/messages`).set(sender.headers);
+    expect(expectSuccess<unknown[]>(listed, 200)).toEqual([]);
+  });
+
+  it('returns 503 with mediaId on scanner outage and creates no message', async () => {
+    media.scanner.mode = 'unavailable';
+    const sender = await messaging.verifiedUser('Sender');
+    const recipient = await messaging.verifiedUser('Recipient');
+    const chatId = await messaging.openDirectChat(recipient.id, sender.headers);
+
+    const response = await app.request
+      .post(`/api/chats/${chatId}/messages/media/upload`)
+      .set(sender.headers)
+      .field('kind', 'image')
+      .field('sizeBytes', '11')
+      .attach('file', Buffer.from('clean-bytes'), { filename: 'x.png', contentType: 'image/png' });
+
+    const error = expectError(response, 503, 'MEDIA_SCAN_UNAVAILABLE');
+    expect(error.details).toMatchObject({ mediaId: expect.any(String) });
+
+    const listed = await app.request.get(`/api/chats/${chatId}/messages`).set(sender.headers);
+    expect(expectSuccess<unknown[]>(listed, 200)).toEqual([]);
+  });
+
+  it('rejects a size mismatch without creating a message', async () => {
+    const sender = await messaging.verifiedUser('Sender');
+    const recipient = await messaging.verifiedUser('Recipient');
+    const chatId = await messaging.openDirectChat(recipient.id, sender.headers);
+
+    expectError(
+      await app.request
+        .post(`/api/chats/${chatId}/messages/media/upload`)
+        .set(sender.headers)
+        .field('kind', 'image')
+        .field('sizeBytes', '99')
+        .attach('file', Buffer.from('clean-bytes'), {
+          filename: 'x.png',
+          contentType: 'image/png',
+        }),
+      400,
+      'VALIDATION_ERROR',
+    );
+
+    const listed = await app.request.get(`/api/chats/${chatId}/messages`).set(sender.headers);
+    expect(expectSuccess<unknown[]>(listed, 200)).toEqual([]);
+  });
+
+  it('rejects a kind that does not match the uploaded content type', async () => {
+    const sender = await messaging.verifiedUser('Sender');
+    const recipient = await messaging.verifiedUser('Recipient');
+    const chatId = await messaging.openDirectChat(recipient.id, sender.headers);
+
+    expectError(
+      await app.request
+        .post(`/api/chats/${chatId}/messages/media/upload`)
+        .set(sender.headers)
+        .field('kind', 'gif')
+        .field('sizeBytes', '11')
+        .attach('file', Buffer.from('clean-bytes'), {
+          filename: 'x.png',
+          contentType: 'image/png',
+        }),
+      400,
+      'VALIDATION_ERROR',
+    );
+  });
 });

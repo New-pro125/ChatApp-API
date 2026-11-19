@@ -195,10 +195,21 @@ export class MediaService {
       sizeBytes: input.sizeBytes,
     });
 
+    // Let storage consume the stream while the parser validates the complete
+    // request. A late multipart failure then wins over a short-body upload,
+    // which would otherwise surface as an opaque repository error.
+    let stored: Promise<void> | undefined;
     try {
-      await this.store.putStream(record.objectKey, input.contentType, input.sizeBytes, input.body);
+      stored = this.store.putStream(
+        record.objectKey,
+        input.contentType,
+        input.sizeBytes,
+        input.body,
+      );
       await input.assertComplete();
+      await stored;
     } catch (error) {
+      await stored?.catch(() => {});
       await this.failStorageScan(record.id, userId, null);
       throw error;
     }

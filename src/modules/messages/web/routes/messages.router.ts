@@ -92,6 +92,18 @@ export class MessagesRouter {
           .sendMedia(req, res, next),
     );
 
+    routes.post(
+      '/:chatId/messages/media/upload',
+      messageContracts.uploadMedia,
+      this.requireAuth.handle,
+      this.requireVerifiedEmail.handle,
+      this.limiter.handle,
+      (req, res, next) =>
+        req.container
+          .get<MessageController>(MESSAGES_TYPES.MessageController)
+          .uploadMedia(req, res, next),
+    );
+
     routes.get(
       '/:chatId/messages',
       messageContracts.listMessages,

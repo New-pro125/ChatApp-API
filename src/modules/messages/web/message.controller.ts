@@ -1,5 +1,6 @@
 import type { Request, RequestHandler } from 'express';
 import { inject, injectable } from 'inversify';
+import type { AppConfig } from '@/core/config/app.config.js';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import { UnauthorizedException } from '@/core/errors/http.error.js';
 import type { ApiResponse } from '@/core/http/response/api-response.js';
@@ -16,6 +17,7 @@ import {
   sendSecretMessageSchema,
 } from '@/modules/messages/web/dto/message.schemas.js';
 import type { MessagePresenter } from '@/modules/messages/web/message-presenter.service.js';
+import type { MultipartMediaParser } from '@/modules/messages/web/multipart-media.parser.js';
 
 @injectable()
 export class MessageController {
@@ -23,6 +25,8 @@ export class MessageController {
     @inject(MESSAGES_TYPES.MessageService) private readonly messages: MessageService,
     @inject(MESSAGES_TYPES.MessagePresenter) private readonly presenter: MessagePresenter,
     @inject(CORE_TYPES.ApiResponse) private readonly response: ApiResponse,
+    @inject(MESSAGES_TYPES.MultipartMediaParser) private readonly parser: MultipartMediaParser,
+    @inject(CORE_TYPES.Config) private readonly config: AppConfig,
   ) {}
 
   send: RequestHandler = async (req, res) => {
@@ -39,6 +43,26 @@ export class MessageController {
     const { chatId } = chatParamsSchema.parse(req.params);
     const input = sendMediaMessageSchema.parse(req.body);
     const message = await this.messages.sendMedia(userId, chatId, input);
+
+    this.response.created(res, await this.presenter.present(message));
+  };
+
+  uploadMedia: RequestHandler = async (req, res) => {
+    const { userId } = this.requireAuth(req);
+    const { chatId } = chatParamsSchema.parse(req.params);
+    const upload = await this.parser.parse(req, this.config.media.maxBytes);
+    const message = await this.messages.sendMediaFromUpload(userId, chatId, {
+      kind: upload.fields.kind,
+      caption: upload.fields.caption,
+      durationMs: upload.fields.durationMs,
+      width: upload.fields.width,
+      height: upload.fields.height,
+      replyToMessageId: upload.fields.replyToMessageId,
+      contentType: upload.contentType,
+      sizeBytes: upload.sizeBytes,
+      body: upload.body,
+      assertComplete: upload.assertComplete,
+    });
 
     this.response.created(res, await this.presenter.present(message));
   };

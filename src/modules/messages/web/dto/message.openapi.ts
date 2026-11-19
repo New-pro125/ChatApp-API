@@ -8,6 +8,7 @@ import {
   successEnvelope,
 } from '@/core/http/openapi/openapi.schemas.js';
 import type { OpenApiResponseContract, RouteContract } from '@/core/http/openapi/openapi.types.js';
+import { combinedMediaFieldsSchema } from '@/core/media/media-form.schema.js';
 import {
   chatParamsSchema,
   editMessageSchema,
@@ -160,6 +161,26 @@ export const messageContracts = {
       201: { description: 'The attached media message', schema: messageResponse },
       ...commonErrorResponses,
       409: conflictErrorResponse,
+    },
+  },
+  uploadMedia: {
+    operationId: 'messages.uploadMedia',
+    tags: ['Messages'],
+    summary: 'Upload a file and send it as a cloud media message',
+    security: bearerSecurity,
+    request: {
+      params: chatParamsSchema,
+      body: combinedMediaFieldsSchema.extend({
+        file: z.string().meta({ format: 'binary' }),
+      }),
+      contentType: 'multipart/form-data',
+    },
+    responses: {
+      201: { description: 'The uploaded media message', schema: messageResponse },
+      ...commonErrorResponses,
+      409: conflictErrorResponse,
+      422: errorResponse('The uploaded file is infected'),
+      503: errorResponse('Virus scanning is temporarily unavailable'),
     },
   },
   sendSecretMessage: {
