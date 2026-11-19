@@ -20,6 +20,12 @@ export interface ObjectMetadata {
 
 export interface ObjectStore {
   presignPut(objectKey: string, contentType: string, sizeBytes: number): Promise<PresignedUpload>;
+  putStream(
+    objectKey: string,
+    contentType: string,
+    sizeBytes: number,
+    body: Readable,
+  ): Promise<void>;
   /** A null version id omits the VersionId query parameter for versionless buckets. */
   presignGet(objectKey: string, versionId: string | null): Promise<PresignedDownload>;
   head(objectKey: string): Promise<ObjectMetadata | null>;

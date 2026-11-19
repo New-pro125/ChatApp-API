@@ -76,6 +76,27 @@ export class S3ObjectStore implements ObjectStore {
     }
   }
 
+  async putStream(
+    objectKey: string,
+    contentType: string,
+    sizeBytes: number,
+    body: Readable,
+  ): Promise<void> {
+    try {
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: objectKey,
+          Body: body,
+          ContentType: contentType,
+          ContentLength: sizeBytes,
+        }),
+      );
+    } catch (error) {
+      throw new ObjectStoreException('Failed to upload media object stream', { cause: error });
+    }
+  }
+
   async presignGet(objectKey: string, versionId: string | null): Promise<PresignedDownload> {
     const options = this.options.get(this.bucket, objectKey, this.ttlSeconds);
 

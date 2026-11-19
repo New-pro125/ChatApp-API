@@ -161,6 +161,10 @@ class FakeStore implements ObjectStore {
     });
   }
 
+  putStream(): Promise<void> {
+    throw new Error('putStream is not used by these unit tests');
+  }
+
   presignGet(_objectKey: string, versionId: string | null) {
     this.presignGetCalls.push(versionId);
     const suffix = versionId === null ? '' : `?versionId=${encodeURIComponent(versionId)}`;
