@@ -130,11 +130,12 @@ sequential scan.
 
 ### 5.3 Repositories and services
 
-- `ChatMemberRepository.markRead(chatId, userId, messageId, at): Promise<void>`
-  performs a single conditional `UPDATE`, setting both watermark columns only
-  when the supplied id is greater than the stored one (PostgreSQL `GREATEST`
-  semantics with `NULL` treated as "unset"). The timestamp is the database
-  clock, not a client value.
+- `ChatMemberRepository.markRead(chatId, userId, messageId): Promise<ChatMemberRecord>`
+  performs a conditional `UPDATE`, setting both watermark columns only when the
+  supplied id is greater than the stored one (a `NULL` stored id counts as
+  "unset"). `last_read_at` is set by PostgreSQL `now()` inside the repository,
+  so no client clock value crosses the boundary. The method returns the current
+  membership row, including when the update was a no-op due to a stale id.
 - `ChatMemberRepository.find(chatId, userId)` returns the record including the
   new fields, so existing memberships expose the watermark.
 - `MessageRepository.maxIdByChat(chatId): Promise<string | null>` resolves the
