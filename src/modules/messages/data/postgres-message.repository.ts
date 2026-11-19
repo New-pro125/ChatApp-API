@@ -122,6 +122,29 @@ export class PostgresMessageRepository implements MessageRepository {
     }
   }
 
+  async listByIds(chatId: string, ids: readonly string[]): Promise<MessageRecord[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+
+    try {
+      const rows = await this.db
+        .select(messageSelection)
+        .from(messages)
+        .where(
+          and(
+            eq(messages.chatId, chatId),
+            inArray(messages.id, [...ids]),
+            isNull(messages.deletedAt),
+          ),
+        );
+
+      return rows.map((row) => this.mapper.toRecord(row));
+    } catch (error) {
+      throw new PersistenceException('Failed to list messages by id', { cause: error });
+    }
+  }
+
   async listByChat(chatId: string, query: ListMessagesQuery): Promise<MessageRecord[]> {
     try {
       const conditions = [eq(messages.chatId, chatId)];

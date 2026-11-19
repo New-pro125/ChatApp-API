@@ -5,6 +5,7 @@ import { RequestScopeMiddleware } from '@/core/http/middleware/request-scope.js'
 import type { MediaReferenceReader } from '@/core/media/media-reference.port.js';
 import { PostgresChatRepository } from '@/modules/messages/data/postgres-chat.repository.js';
 import { PostgresChatMemberRepository } from '@/modules/messages/data/postgres-chat-member.repository.js';
+import { PostgresMessagePinRepository } from '@/modules/messages/data/postgres-message-pin.repository.js';
 import { PostgresMessageRepository } from '@/modules/messages/data/postgres-message.repository.js';
 import { ChatService } from '@/modules/messages/logic/chat.service.js';
 import { MediaKindPolicy } from '@/modules/messages/logic/media-kind.policy.js';
@@ -13,6 +14,7 @@ import { MessageService } from '@/modules/messages/logic/message.service.js';
 import { MessagingPolicy } from '@/modules/messages/logic/messaging-policy.service.js';
 import type { ChatRepository } from '@/modules/messages/logic/ports/chat.repository.js';
 import type { ChatMemberRepository } from '@/modules/messages/logic/ports/chat-member.repository.js';
+import type { MessagePinRepository } from '@/modules/messages/logic/ports/message-pin.repository.js';
 import type { MessageRepository } from '@/modules/messages/logic/ports/message.repository.js';
 import { ReadReceiptService } from '@/modules/messages/logic/read-receipt.service.js';
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
@@ -42,6 +44,9 @@ export class MessagesContainer extends Container {
       .inSingletonScope();
     this.bind<MessageRepository>(MESSAGES_TYPES.MessageRepository)
       .to(PostgresMessageRepository)
+      .inSingletonScope();
+    this.bind<MessagePinRepository>(MESSAGES_TYPES.MessagePinRepository)
+      .to(PostgresMessagePinRepository)
       .inSingletonScope();
 
     this.bind<MessagingPolicy>(MESSAGES_TYPES.MessagingPolicy)
