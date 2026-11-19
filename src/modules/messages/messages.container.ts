@@ -14,6 +14,7 @@ import { MessagingPolicy } from '@/modules/messages/logic/messaging-policy.servi
 import type { ChatRepository } from '@/modules/messages/logic/ports/chat.repository.js';
 import type { ChatMemberRepository } from '@/modules/messages/logic/ports/chat-member.repository.js';
 import type { MessageRepository } from '@/modules/messages/logic/ports/message.repository.js';
+import { ReadReceiptService } from '@/modules/messages/logic/read-receipt.service.js';
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 import { ChatController } from '@/modules/messages/web/chat.controller.js';
 import { MessageController } from '@/modules/messages/web/message.controller.js';
@@ -45,6 +46,9 @@ export class MessagesContainer extends Container {
 
     this.bind<MessagingPolicy>(MESSAGES_TYPES.MessagingPolicy)
       .to(MessagingPolicy)
+      .inSingletonScope();
+    this.bind<ReadReceiptService>(MESSAGES_TYPES.ReadReceiptService)
+      .to(ReadReceiptService)
       .inSingletonScope();
     this.bind<ChatService>(MESSAGES_TYPES.ChatService).to(ChatService).inSingletonScope();
     this.bind<MessageService>(MESSAGES_TYPES.MessageService).to(MessageService).inSingletonScope();

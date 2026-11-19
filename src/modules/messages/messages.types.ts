@@ -6,6 +6,7 @@ export const MESSAGES_TYPES = {
   RequestScope: Symbol.for('Messages.RequestScope'),
   MessagesRateLimiter: Symbol.for('Messages.MessagesRateLimiter'),
   MessagingPolicy: Symbol.for('Messages.MessagingPolicy'),
+  ReadReceiptService: Symbol.for('Messages.ReadReceiptService'),
   ChatService: Symbol.for('Messages.ChatService'),
   MessageService: Symbol.for('Messages.MessageService'),
   MediaKindPolicy: Symbol.for('Messages.MediaKindPolicy'),
