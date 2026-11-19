@@ -91,6 +91,11 @@ export class MediaFixture {
     this.keys.push(ticket.objectKey);
   }
 
+  /** Registers an object created by a request that does not return an upload ticket. */
+  trackKey(objectKey: string): void {
+    this.keys.push(objectKey);
+  }
+
   async put(ticket: UploadTicketResponse, bytes: Buffer, contentType: string): Promise<void> {
     const response = await fetch(ticket.uploadUrl, {
       method: 'PUT',

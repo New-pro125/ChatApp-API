@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppConfig } from '@/core/config/app.config.js';
 import {
   InvalidMediaInputException,
@@ -20,6 +20,7 @@ import type { ObjectStore } from '@/modules/media/logic/ports/object-store.js';
 import type { ScanResult, VirusScanner } from '@/modules/media/logic/ports/virus-scanner.js';
 
 const OWNER = '01920000-0000-7000-8000-0000000000aa';
+const OTHER = '01920000-0000-7000-8000-0000000000cc';
 const ID = '01920000-0000-7000-8000-0000000000bb';
 const KEY = `media/${OWNER}/${ID}.png`;
 const VERSION = 'minio-version-1';
@@ -54,8 +55,8 @@ class FakeRepository implements MediaObjectRepository {
     return Promise.resolve(this.seed());
   }
 
-  findOwned(): Promise<MediaObjectRecord | null> {
-    return Promise.resolve(this.record);
+  findOwned(id: string, ownerUserId: string): Promise<MediaObjectRecord | null> {
+    return Promise.resolve(id === ID && ownerUserId === OWNER ? this.record : null);
   }
 
   findById(): Promise<MediaObjectRecord | null> {
@@ -369,6 +370,17 @@ describe('MediaService', () => {
     await service.remove(OWNER, ID);
     expect(store.deletedKeys).toEqual([KEY]);
     expect(objects.deleted).toEqual([ID]);
+  });
+
+  it('returns 404 for a non-owner without checking whether the media is in use', async () => {
+    objects.seed('ready');
+    references.live = true;
+    const referenceLookup = vi.spyOn(references, 'hasLiveReferences');
+
+    await expect(service.remove(OTHER, ID)).rejects.toThrow(MediaNotFoundException);
+    expect(referenceLookup).not.toHaveBeenCalled();
+    expect(store.deletedKeys).toEqual([]);
+    expect(objects.deleted).toEqual([]);
   });
 
   it('signForReader returns only the redacted download fields', async () => {

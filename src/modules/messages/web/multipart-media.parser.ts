@@ -101,6 +101,7 @@ export class MultipartMediaParser {
         }
         declaredBytes = declared;
 
+        stream.on('limit', () => failOnce(new BadRequestException('File exceeds maximum size')));
         stream.on('data', (chunk: Buffer) => {
           observedBytes += chunk.length;
           if (observedBytes > declaredBytes) {

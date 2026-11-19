@@ -156,8 +156,8 @@ export class MediaService {
   }
 
   async remove(userId: string, mediaId: string): Promise<void> {
-    await this.assertDeletable(mediaId);
     const record = await this.requireOwned(userId, mediaId);
+    await this.assertDeletable(mediaId);
     await this.store.delete(record.objectKey);
 
     const deleted = await this.objects.deleteOwned(mediaId, userId);

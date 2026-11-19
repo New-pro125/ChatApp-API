@@ -1,3 +1,4 @@
+import { PassThrough } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 import { BadRequestException } from '@/core/errors/http.error.js';
 import { combinedMediaFieldsSchema } from '@/core/media/media-form.schema.js';
@@ -23,6 +24,13 @@ function requestWith(body: Buffer, contentType: string, contentLength?: number) 
       return target;
     },
   };
+}
+
+function chunkedRequestWith(body: Buffer, contentType: string) {
+  const stream = new PassThrough();
+  const request = Object.assign(stream, { headers: { 'content-type': contentType } });
+  stream.end(body);
+  return request;
 }
 
 describe('MultipartMediaParser', () => {
@@ -200,5 +208,25 @@ describe('MultipartMediaParser', () => {
 
     await expect(parsed.assertComplete()).resolves.toBeUndefined();
     expect(parsed.sizeBytes).toBe(3);
+  });
+
+  it('rejects a chunked file larger than maxFileBytes even when sizeBytes equals the cap', async () => {
+    const maxFileBytes = 8;
+    const file = Buffer.alloc(maxFileBytes + 1, 0x61);
+    const body =
+      `--${boundary}\r\nContent-Disposition: form-data; name="kind"\r\n\r\nimage\r\n` +
+      `--${boundary}\r\nContent-Disposition: form-data; name="sizeBytes"\r\n\r\n${maxFileBytes}\r\n` +
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="x.png"\r\n` +
+      `Content-Type: image/png\r\n\r\n`;
+    const bytes = Buffer.concat([Buffer.from(body), file, Buffer.from(`\r\n--${boundary}--\r\n`)]);
+
+    const parsed = await new MultipartMediaParser().parse(
+      chunkedRequestWith(bytes, `multipart/form-data; boundary=${boundary}`) as never,
+      maxFileBytes,
+    );
+    await expect(parsed.assertComplete()).rejects.toMatchObject({
+      status: 400,
+      code: 'VALIDATION_ERROR',
+    });
   });
 });

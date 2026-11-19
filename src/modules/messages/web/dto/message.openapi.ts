@@ -159,7 +159,7 @@ export const messageContracts = {
     responses: {
       201: { description: 'The attached media message', schema: messageResponse },
       ...commonErrorResponses,
-      409: errorResponse('Conflict, including MEDIA_IN_USE'),
+      409: errorResponse('Media object is not ready'),
     },
   },
   uploadMedia: {
@@ -177,7 +177,7 @@ export const messageContracts = {
     responses: {
       201: { description: 'The uploaded media message', schema: messageResponse },
       ...commonErrorResponses,
-      409: errorResponse('Conflict, including MEDIA_IN_USE'),
+      409: errorResponse('Media object is not ready'),
       422: errorResponse('The uploaded file is infected'),
       503: errorResponse('Virus scanning is temporarily unavailable'),
     },

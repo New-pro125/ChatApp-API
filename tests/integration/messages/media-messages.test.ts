@@ -29,6 +29,26 @@ describe('media message attach mode', () => {
     media.scanner.mode = 'clean';
   });
 
+  function trackCombinedUpload(mediaId: string, ownerUserId: string, contentType: string): void {
+    const extension = contentType === 'image/png' ? 'png' : 'bin';
+    media.trackKey(`media/${ownerUserId}/${mediaId}.${extension}`);
+  }
+
+  async function mediaIdWithStatus(
+    ownerUserId: string,
+    status: 'quarantined' | 'pending' | 'failed',
+  ): Promise<string> {
+    const result = await app.pool.query<{ id: string }>(
+      'SELECT id FROM media_objects WHERE owner_user_id = $1 AND status = $2 ORDER BY created_at DESC LIMIT 1',
+      [ownerUserId, status],
+    );
+    const mediaId = result.rows[0]?.id;
+    if (mediaId === undefined) {
+      throw new Error(`Expected a ${status} media object for ${ownerUserId}`);
+    }
+    return mediaId;
+  }
+
   async function readyPng(headers: Record<string, string>) {
     const ticketResponse = await app.request
       .post('/api/media/uploads')
@@ -197,10 +217,10 @@ describe('media message attach mode', () => {
       .field('sizeBytes', '11')
       .attach('file', Buffer.from('clean-bytes'), { filename: 'x.png', contentType: 'image/png' });
 
-    const message = expectSuccess<{ media: { downloadUrl: string; contentType: string } }>(
-      response,
-      201,
-    );
+    const message = expectSuccess<{
+      media: { downloadUrl: string; contentType: string; mediaId: string };
+    }>(response, 201);
+    trackCombinedUpload(message.media.mediaId, sender.id, 'image/png');
     expect(message.media.contentType).toBe('image/png');
     const download = await fetch(message.media.downloadUrl);
     expect(await download.text()).toBe('clean-bytes');
@@ -223,6 +243,8 @@ describe('media message attach mode', () => {
       .attach('file', eicar, { filename: 'eicar.txt', contentType: 'application/octet-stream' });
 
     expectError(response, 422, 'MEDIA_INFECTED');
+    const quarantinedId = await mediaIdWithStatus(sender.id, 'quarantined');
+    trackCombinedUpload(quarantinedId, sender.id, 'application/octet-stream');
     const listed = await app.request.get(`/api/chats/${chatId}/messages`).set(sender.headers);
     expect(expectSuccess<unknown[]>(listed, 200)).toEqual([]);
   });
@@ -242,6 +264,11 @@ describe('media message attach mode', () => {
 
     const error = expectError(response, 503, 'MEDIA_SCAN_UNAVAILABLE');
     expect(error.details).toMatchObject({ mediaId: expect.any(String) });
+    const details = error.details as { mediaId?: string } | undefined;
+    if (details?.mediaId === undefined) {
+      throw new Error('Expected mediaId in scanner outage details');
+    }
+    trackCombinedUpload(details.mediaId, sender.id, 'image/png');
 
     const listed = await app.request.get(`/api/chats/${chatId}/messages`).set(sender.headers);
     expect(expectSuccess<unknown[]>(listed, 200)).toEqual([]);
@@ -265,6 +292,9 @@ describe('media message attach mode', () => {
       400,
       'VALIDATION_ERROR',
     );
+    // The parser rejects after the object stream is stored, so the row/object still exist.
+    const failedId = await mediaIdWithStatus(sender.id, 'failed');
+    trackCombinedUpload(failedId, sender.id, 'image/png');
 
     const listed = await app.request.get(`/api/chats/${chatId}/messages`).set(sender.headers);
     expect(expectSuccess<unknown[]>(listed, 200)).toEqual([]);
