@@ -1,6 +1,8 @@
 import { Container } from 'inversify';
+import { CORE_TYPES } from '@/core/container/core.types.js';
 import { MediaRateLimiter } from '@/core/http/middleware/rate-limit.js';
 import { RequestScopeMiddleware } from '@/core/http/middleware/request-scope.js';
+import type { MediaAccess } from '@/core/media/media-access.port.js';
 import { ClamAvVirusScanner } from '@/modules/media/data/clamav-virus.scanner.js';
 import { PostgresMediaObjectRepository } from '@/modules/media/data/postgres-media-object.repository.js';
 import { S3ObjectStore } from '@/modules/media/data/s3-object.store.js';
@@ -17,7 +19,7 @@ import { MediaController } from '@/modules/media/web/media.controller.js';
 import { MediaRouter } from '@/modules/media/web/routes/media.router.js';
 
 export class MediaContainer extends Container {
-  constructor(root: Container) {
+  constructor(private readonly root: Container) {
     super({ parent: root });
 
     this.bind<RequestScopeMiddleware>(MEDIA_TYPES.RequestScope).toConstantValue(
@@ -41,6 +43,12 @@ export class MediaContainer extends Container {
     this.bind<MediaService>(MEDIA_TYPES.MediaService).to(MediaService).inSingletonScope();
     this.bind<MediaAccessService>(MEDIA_TYPES.MediaAccessService)
       .to(MediaAccessService)
+      .inSingletonScope();
+    // Resolve lazily: eager resolution would construct MediaService here and pin
+    // the real scanner before tests rebind the module's VirusScanner dependency.
+    this.root
+      .bind<MediaAccess>(CORE_TYPES.MediaAccess)
+      .toDynamicValue(() => this.get<MediaAccessService>(MEDIA_TYPES.MediaAccessService))
       .inSingletonScope();
 
     this.bind<MediaController>(MEDIA_TYPES.MediaController).to(MediaController);
