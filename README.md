@@ -279,7 +279,7 @@ use the shared `rl:messages:` bucket (120 requests per 15 minutes).
 | `POST`   | `/api/chats`                                     | Open (or retrieve) a direct chat            |
 | `GET`    | `/api/chats`                                     | List the caller's chats, most active first  |
 | `POST`   | `/api/chats/:chatId/read`                        | Advance the caller's read watermark         |
-| `POST`   | `/api/chats/:chatId/messages/:messageId/pin`     | Pin a message for the caller                |
+| `POST`   | `/api/chats/:chatId/messages/:messageId/pin`     | Pin a message for a chosen duration         |
 | `DELETE` | `/api/chats/:chatId/messages/:messageId/pin`     | Remove the caller's pin (idempotent)        |
 | `GET`    | `/api/chats/:chatId/pins`                        | List the caller's pinned messages           |
 | `POST`   | `/api/chats/:chatId/messages`                    | Send a text message                         |
@@ -335,15 +335,24 @@ also `null` for deleted messages and for incoming messages.
 
 Pins are private, per-user bookmarks on live messages. Both direct cloud chats
 and secret chats are supported, and pinning only stores metadata: secret-chat
-ciphertext, nonce, and device ids are never read or changed. Each user may pin at
-most 10 messages per chat; an 11th pin returns `409 CONFLICT`. Pinning the same
-message again is idempotent and keeps the original `pinnedAt` timestamp.
-`DELETE /api/chats/:chatId/messages/:messageId/pin` is idempotent and returns
-`204` even when no pin exists. `GET /api/chats/:chatId/pins` returns the caller's
-pins newest-first as full message views; the other participant's pins are never
-listed or exposed. Message history and pin-list rows carry `pinnedAt` for the
-caller only, and it is `null` for everyone else. Soft-deleting a message removes
-all of its pins.
+ciphertext, nonce, and device ids are never read or changed. `POST /pin` requires
+`{ "durationSeconds": 3600 }` with an integer from 60 (1 minute) to 604800
+(7 days); invalid values return `400 VALIDATION_ERROR`. The server computes
+`expiresAt` from its own clock when the pin is created; clients never supply an
+absolute deadline. Once elapsed, a pin is hidden from `GET /pins` and from
+message history (both `pinnedAt` and `pinExpiresAt` become `null`) and immediately
+stops counting toward the ten-pin cap. A pin can be created again after expiry;
+pinning an active message again is idempotent and keeps the original timestamps.
+`POST /pin` returns `expiresAt` and message views plus `GET /pins` return
+`pinExpiresAt`. A BullMQ repeatable job physically deletes elapsed rows every
+`PIN_CLEANUP_INTERVAL_MINUTES` (default 5), but read-time filtering is
+authoritative, so a Redis or job outage never exposes an expired pin. Pins
+created before this change were backfilled to expire one day after deployment;
+they are not permanent. `DELETE /api/chats/:chatId/messages/:messageId/pin` is
+idempotent and returns `204` even when no pin exists.
+`GET /api/chats/:chatId/pins` returns the caller's active pins newest-first as
+full message views; the other participant's pins are never listed or exposed.
+Soft-deleting a message removes all of its pins.
 
 ### Media messages
 
@@ -626,6 +635,10 @@ trust, the CORS allowlist, and readiness caching. `SMTP_TIMEOUT_MS` bounds SMTP
 connection, greeting, and socket waits. See `.env.example` for the full list of
 database pool, HTTP hardening, auth hardening, OTP, email verification, stories,
 messaging, captcha, MFA, SMTP, OAuth, SSO, and Docker Compose options.
+
+`PIN_CLEANUP_INTERVAL_MINUTES` (default `5`) sets how often the BullMQ repeatable
+job physically deletes elapsed pin rows. Elapsed pins are already hidden on read,
+so this only controls storage hygiene.
 
 ### Media uploads and scanning
 

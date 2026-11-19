@@ -16,6 +16,7 @@ import {
   markReadSchema,
   messageParamsSchema,
   openDirectChatSchema,
+  pinMessageSchema,
   sendMediaMessageSchema,
   sendMessageSchema,
   sendSecretMessageSchema,
@@ -72,6 +73,7 @@ export const messageSchema = z
     createdAt: z.iso.datetime(),
     readAt: z.iso.datetime().nullable(),
     pinnedAt: z.iso.datetime().nullable(),
+    pinExpiresAt: z.iso.datetime().nullable(),
     ciphertext: z.string().nullable(),
     nonce: z.string().nullable(),
     ephemeralPublicKey: z.string().nullable(),
@@ -104,6 +106,7 @@ export const pinSchema = z
   .object({
     messageId: z.uuid(),
     pinnedAt: z.iso.datetime(),
+    expiresAt: z.iso.datetime(),
   })
   .meta({ id: 'MessagePin' });
 
@@ -273,9 +276,9 @@ export const messageContracts = {
     tags: ['Messages'],
     summary: 'Pin a message for the caller',
     description:
-      'Adds a private bookmark to a live message in a direct or secret chat. Each user has at most ten pins per chat; an eleventh returns 409 CONFLICT. Pinning again keeps the original timestamp.',
+      'Adds a private, time-bounded bookmark to a live message in a direct or secret chat. durationSeconds must be 60..604800. Each user has at most ten active pins per chat; an eleventh returns 409 CONFLICT. Pinning again keeps the original timestamps.',
     security: bearerSecurity,
-    request: { params: messageParamsSchema },
+    request: { params: messageParamsSchema, body: pinMessageSchema },
     responses: {
       201: { description: 'The created pin', schema: pinResponse },
       ...commonErrorResponses,
@@ -299,7 +302,7 @@ export const messageContracts = {
     tags: ['Messages'],
     summary: 'List the caller pinned messages in a chat',
     description:
-      'Returns the caller private bookmarks, newest pin first, as full message views with pinnedAt. Pins belonging to the other participant are never returned.',
+      'Returns the caller active private bookmarks, newest pin first, as full message views with pinnedAt and pinExpiresAt. Pins belonging to the other participant are never returned.',
     security: bearerSecurity,
     request: { params: chatParamsSchema },
     responses: {

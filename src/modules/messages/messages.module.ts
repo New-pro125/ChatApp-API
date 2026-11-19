@@ -2,6 +2,7 @@ import type { Router } from 'express';
 import type { Container } from 'inversify';
 import type { MessagesRateLimiter } from '@/core/http/middleware/rate-limit.js';
 import type { AppModule } from '@/core/modules/app.module.js';
+import type { PinCleanupWorker } from '@/modules/messages/logic/pin-cleanup.worker.js';
 import { MessagesContainer } from '@/modules/messages/messages.container.js';
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 import type { MessagesRouter } from '@/modules/messages/web/routes/messages.router.js';
@@ -19,13 +20,13 @@ export class MessagesModule implements AppModule {
     this.router = this.container.get<MessagesRouter>(MESSAGES_TYPES.MessagesRouter).router;
   }
 
-  configure(): void {
+  async configure(): Promise<void> {
     this.container.get<MessagesRateLimiter>(MESSAGES_TYPES.MessagesRateLimiter).initialize();
+    await this.container.get<PinCleanupWorker>(MESSAGES_TYPES.PinCleanupWorker).start();
   }
 
-  dispose(): Promise<void> {
+  async dispose(): Promise<void> {
+    await this.container.get<PinCleanupWorker>(MESSAGES_TYPES.PinCleanupWorker).close();
     this.container.unbindAll();
-
-    return Promise.resolve();
   }
 }

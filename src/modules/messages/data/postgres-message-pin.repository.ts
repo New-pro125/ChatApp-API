@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, sql } from 'drizzle-orm';
 import { inject, injectable } from 'inversify';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import type { AppDatabase } from '@/core/database/database.provider.js';
@@ -7,10 +7,11 @@ import { PersistenceException } from '@/core/errors/repository.error.js';
 import { MessagePinMapper, pinSelection } from '@/modules/messages/data/message-pin.mapper.js';
 import type {
   MessagePinRepository,
+  PinIndicators,
   PinRecord,
 } from '@/modules/messages/logic/ports/message-pin.repository.js';
 
-/** Ten bookmarks per chat and user; the 11th pin is rejected. */
+/** Ten active bookmarks per chat and user; the 11th pin is rejected. */
 const PIN_LIMIT = 10;
 
 @injectable()
@@ -19,7 +20,12 @@ export class PostgresMessagePinRepository implements MessagePinRepository {
 
   constructor(@inject(CORE_TYPES.Db) private readonly db: AppDatabase) {}
 
-  async pin(chatId: string, userId: string, messageId: string): Promise<PinRecord | null> {
+  async pin(
+    chatId: string,
+    userId: string,
+    messageId: string,
+    expiresAt: Date,
+  ): Promise<PinRecord | null> {
     try {
       return await this.db.transaction(async (tx) => {
         // Serializes concurrent pin attempts by this user in this chat.
@@ -41,15 +47,34 @@ export class PostgresMessagePinRepository implements MessagePinRepository {
             ),
           )
           .limit(1);
+        const current = existing[0];
 
-        if (existing[0]) {
-          return this.mapper.toRecord(existing[0]);
+        if (current && current.expiresAt > new Date()) {
+          return this.mapper.toRecord(current);
+        }
+
+        if (current) {
+          await tx
+            .delete(messagePins)
+            .where(
+              and(
+                eq(messagePins.chatId, chatId),
+                eq(messagePins.userId, userId),
+                eq(messagePins.messageId, messageId),
+              ),
+            );
         }
 
         const counted = await tx
           .select({ count: sql<number>`count(*)::int` })
           .from(messagePins)
-          .where(and(eq(messagePins.chatId, chatId), eq(messagePins.userId, userId)));
+          .where(
+            and(
+              eq(messagePins.chatId, chatId),
+              eq(messagePins.userId, userId),
+              gt(messagePins.expiresAt, new Date()),
+            ),
+          );
 
         if ((counted[0]?.count ?? 0) >= PIN_LIMIT) {
           return null;
@@ -57,7 +82,7 @@ export class PostgresMessagePinRepository implements MessagePinRepository {
 
         const inserted = await tx
           .insert(messagePins)
-          .values({ chatId, userId, messageId })
+          .values({ chatId, userId, messageId, expiresAt })
           .returning(pinSelection);
 
         const row = inserted[0];
@@ -101,7 +126,13 @@ export class PostgresMessagePinRepository implements MessagePinRepository {
       const rows = await this.db
         .select(pinSelection)
         .from(messagePins)
-        .where(and(eq(messagePins.chatId, chatId), eq(messagePins.userId, userId)))
+        .where(
+          and(
+            eq(messagePins.chatId, chatId),
+            eq(messagePins.userId, userId),
+            gt(messagePins.expiresAt, new Date()),
+          ),
+        )
         .orderBy(desc(messagePins.pinnedAt));
 
       return rows.map((row) => this.mapper.toRecord(row));
@@ -114,7 +145,7 @@ export class PostgresMessagePinRepository implements MessagePinRepository {
     chatId: string,
     userId: string,
     messageIds: readonly string[],
-  ): Promise<Map<string, Date>> {
+  ): Promise<Map<string, PinIndicators>> {
     if (messageIds.length === 0) {
       return new Map();
     }
@@ -127,13 +158,44 @@ export class PostgresMessagePinRepository implements MessagePinRepository {
           and(
             eq(messagePins.chatId, chatId),
             eq(messagePins.userId, userId),
+            gt(messagePins.expiresAt, new Date()),
             inArray(messagePins.messageId, [...messageIds]),
           ),
         );
 
-      return new Map(rows.map((row) => [row.messageId, row.pinnedAt]));
+      return new Map(
+        rows.map((row) => [
+          row.messageId,
+          { pinnedAt: row.pinnedAt, expiresAt: row.expiresAt } satisfies PinIndicators,
+        ]),
+      );
     } catch (error) {
       throw new PersistenceException('Failed to look up pinned messages', { cause: error });
+    }
+  }
+
+  async deleteExpired(now: Date, limit: number): Promise<number> {
+    try {
+      const result = await this.db.execute<{ message_id: string }>(sql`
+        WITH candidates AS (
+          SELECT chat_id, user_id, message_id
+          FROM message_pins
+          WHERE expires_at <= ${now}
+          ORDER BY expires_at
+          LIMIT ${limit}
+          FOR UPDATE SKIP LOCKED
+        )
+        DELETE FROM message_pins p
+        USING candidates c
+        WHERE p.chat_id = c.chat_id
+          AND p.user_id = c.user_id
+          AND p.message_id = c.message_id
+        RETURNING p.message_id
+      `);
+
+      return result.rowCount ?? 0;
+    } catch (error) {
+      throw new PersistenceException('Failed to delete expired message pins', { cause: error });
     }
   }
 
