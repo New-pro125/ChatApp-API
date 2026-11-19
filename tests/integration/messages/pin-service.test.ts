@@ -1,3 +1,4 @@
+import { Container } from 'inversify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ConflictException } from '@/core/errors/http.error.js';
 import type { PinService } from '@/modules/messages/logic/pin.service.js';
@@ -20,7 +21,9 @@ describe('PinService', () => {
   beforeAll(async () => {
     app = await TestApp.create();
     auth = new AuthFixture(app);
-    const container = new MessagesContainer(app.container);
+    // An intermediate container keeps the extra module's root-level binding
+    // off app.container, so HTTP requests through the app still see one binding.
+    const container = new MessagesContainer(new Container({ parent: app.container }));
     chats = container.get(MESSAGES_TYPES.ChatRepository);
     members = container.get(MESSAGES_TYPES.ChatMemberRepository);
     messages = container.get(MESSAGES_TYPES.MessageRepository);
@@ -107,5 +110,23 @@ describe('PinService', () => {
     const list = await pins.list(alice.id, chat.id);
     expect(list.map((item) => item.message.id)).toEqual([second.id, first.id]);
     expect(list[0]?.pinnedAt).toBeInstanceOf(Date);
+  });
+
+  it('shows pinnedAt only to the user who pinned the message', async () => {
+    const { alice, bob, chat } = await pair();
+    const aliceToken = await auth.mintTokens(alice);
+    const bobToken = await auth.mintTokens(bob);
+    const message = await messages.create({ chatId: chat.id, senderId: bob.id, body: 'visible' });
+    await pins.pin(alice.id, chat.id, message.id);
+
+    async function pinnedAtFor(headers: Record<string, string>): Promise<string | null> {
+      const response = await app.request.get(`/api/chats/${chat.id}/messages`).set(headers);
+      const data = response.body.data as Array<{ id: string; pinnedAt: string | null }>;
+      expect(response.status).toBe(200);
+      return data.find((item) => item.id === message.id)?.pinnedAt ?? null;
+    }
+
+    expect(await pinnedAtFor(auth.bearerHeader(aliceToken.accessToken))).not.toBeNull();
+    expect(await pinnedAtFor(auth.bearerHeader(bobToken.accessToken))).toBeNull();
   });
 });

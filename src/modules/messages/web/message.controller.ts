@@ -6,6 +6,7 @@ import { UnauthorizedException } from '@/core/errors/http.error.js';
 import type { ApiResponse } from '@/core/http/response/api-response.js';
 import type { MessageRecord } from '@/modules/messages/logic/entities/message-record.js';
 import type { MessageService } from '@/modules/messages/logic/message.service.js';
+import type { PinService } from '@/modules/messages/logic/pin.service.js';
 import type { ReadReceiptService } from '@/modules/messages/logic/read-receipt.service.js';
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 import {
@@ -25,6 +26,7 @@ import type { MultipartMediaParser } from '@/modules/messages/web/multipart-medi
 export class MessageController {
   constructor(
     @inject(MESSAGES_TYPES.MessageService) private readonly messages: MessageService,
+    @inject(MESSAGES_TYPES.PinService) private readonly pins: PinService,
     @inject(MESSAGES_TYPES.ReadReceiptService) private readonly receipts: ReadReceiptService,
     @inject(MESSAGES_TYPES.MessagePresenter) private readonly presenter: MessagePresenter,
     @inject(CORE_TYPES.ApiResponse) private readonly response: ApiResponse,
@@ -93,10 +95,17 @@ export class MessageController {
     const receipts = await this.receipts.contextFor(chatId, userId);
     const page = rows.slice(0, query.limit);
     const nextCursor = rows.length > query.limit ? (page.at(-1)?.id ?? null) : null;
+    const pinnedAtById = await this.pins.listPinnedFor(
+      chatId,
+      userId,
+      page.map((message) => message.id),
+    );
 
     this.response.cursor(
       res,
-      await Promise.all(page.map((message) => this.presenter.present(message, receipts))),
+      await Promise.all(
+        page.map((message) => this.presenter.present(message, receipts, pinnedAtById)),
+      ),
       nextCursor,
     );
   };

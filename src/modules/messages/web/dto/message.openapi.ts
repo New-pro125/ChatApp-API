@@ -71,6 +71,7 @@ export const messageSchema = z
     deletedAt: z.iso.datetime().nullable(),
     createdAt: z.iso.datetime(),
     readAt: z.iso.datetime().nullable(),
+    pinnedAt: z.iso.datetime().nullable(),
     ciphertext: z.string().nullable(),
     nonce: z.string().nullable(),
     ephemeralPublicKey: z.string().nullable(),
