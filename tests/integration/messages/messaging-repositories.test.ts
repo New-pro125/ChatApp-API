@@ -372,20 +372,25 @@ describe('Messaging repositories', () => {
     const charlie = await auth.createUser();
     const firstChat = await createGroupChat(alice.id);
     const secondChat = await createGroupChat(alice.id);
+    const emptyChatId = await createGroupChat(alice.id);
     await members.add(firstChat, bob.id);
     await members.add(secondChat, charlie.id);
     await messages.create({ chatId: firstChat, senderId: bob.id, body: 'first' });
     await messages.create({ chatId: secondChat, senderId: charlie.id, body: 'second' });
 
     const selectSpy = vi.spyOn(app.db, 'select');
-    const counts = await messages.countUnreadByChats(alice.id, [firstChat, secondChat]);
+    const counts = await messages.countUnreadByChats(alice.id, [
+      firstChat,
+      secondChat,
+      emptyChatId,
+    ]);
     const queryCount = selectSpy.mock.calls.length;
     selectSpy.mockRestore();
 
     expect(queryCount).toBe(1);
     expect(counts.get(firstChat)).toBe(1);
     expect(counts.get(secondChat)).toBe(1);
-    expect(counts.has('00000000-0000-7000-8000-000000000000')).toBe(false);
+    expect(counts.has(emptyChatId)).toBe(false);
   });
 
   it('never rewinds the watermark when stale marks race', async () => {

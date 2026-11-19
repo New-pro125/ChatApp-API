@@ -47,12 +47,12 @@ export class ChatService {
     const existing = await this.chats.findDirectByKey(directKey);
 
     if (existing) {
-      return { view: await this.toView(existing), created: false };
+      return { view: await this.toView(existing, creatorId), created: false };
     }
 
     const created = await this.createDirect(creatorId, participantId, directKey);
 
-    return { view: await this.toView(created.chat), created: created.created };
+    return { view: await this.toView(created.chat, creatorId), created: created.created };
   }
 
   /** Opens the deterministic one-to-one secret chat once both sides have a device. */
@@ -81,12 +81,12 @@ export class ChatService {
     const existing = await this.chats.findDirectByKey(secretKey);
 
     if (existing) {
-      return { view: await this.toView(existing), created: false };
+      return { view: await this.toView(existing, creatorId), created: false };
     }
 
     const created = await this.createSecretChat(creatorId, participantId, secretKey);
 
-    return { view: await this.toView(created.chat), created: created.created };
+    return { view: await this.toView(created.chat, creatorId), created: created.created };
   }
 
   async listForUser(userId: string): Promise<ChatView[]> {
@@ -196,7 +196,7 @@ export class ChatService {
     }
   }
 
-  private async toView(chat: ChatRecord): Promise<ChatView> {
+  private async toView(chat: ChatRecord, viewerId: string): Promise<ChatView> {
     const memberships = await this.members.listByChat(chat.id);
     const summaries = await this.users.findSummaries(memberships.map((member) => member.userId));
     const summariesById = new Map(summaries.map((summary) => [summary.id, summary]));
@@ -204,8 +204,9 @@ export class ChatService {
       const summary = summariesById.get(member.userId);
       return summary ? [summary] : [];
     });
+    const unread = await this.messages.countUnreadByChats(viewerId, [chat.id]);
 
-    return new ChatView(chat, participants, 0);
+    return new ChatView(chat, participants, unread.get(chat.id) ?? 0);
   }
 
   /** Order-independent key so either side can open the same direct chat. */

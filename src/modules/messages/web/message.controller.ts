@@ -83,7 +83,6 @@ export class MessageController {
     const { userId } = this.requireAuth(req);
     const { chatId } = chatParamsSchema.parse(req.params);
     const query = listMessagesQuerySchema.parse(req.query);
-    const receipts = await this.receipts.contextFor(chatId, userId);
 
     // Fetch one extra row so the cursor is null only when the page is truly
     // the last one, without running a separate count query.
@@ -91,6 +90,7 @@ export class MessageController {
       limit: query.limit + 1,
       beforeId: query.cursor,
     });
+    const receipts = await this.receipts.contextFor(chatId, userId);
     const page = rows.slice(0, query.limit);
     const nextCursor = rows.length > query.limit ? (page.at(-1)?.id ?? null) : null;
 

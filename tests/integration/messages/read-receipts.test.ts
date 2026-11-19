@@ -221,8 +221,14 @@ describe('Read receipts', () => {
     const own = await send(alice.headers, chatId, 'mine');
     const ownId = own.body.data.id as string;
 
-    await markRead(alice.headers, chatId, { messageId: firstId });
-    await markRead(bob.headers, chatId, { messageId: ownId });
+    const aliceMark = expectSuccess<{ lastReadAt: string }>(
+      await markRead(alice.headers, chatId, { messageId: firstId }),
+      200,
+    );
+    const bobMark = expectSuccess<{ lastReadAt: string }>(
+      await markRead(bob.headers, chatId, { messageId: ownId }),
+      200,
+    );
 
     async function readAtFor(headers: Record<string, string>) {
       const messages = expectSuccess<Array<{ id: string; readAt: string | null }>>(
@@ -233,12 +239,12 @@ describe('Read receipts', () => {
     }
 
     const forBob = await readAtFor(bob.headers);
-    expect(forBob.get(firstId)).not.toBeNull();
+    expect(forBob.get(firstId)).toBe(aliceMark.lastReadAt);
     expect(forBob.get(secondId)).toBeNull();
     expect(forBob.get(ownId)).toBeNull();
 
     const forAlice = await readAtFor(alice.headers);
-    expect(forAlice.get(ownId)).not.toBeNull();
+    expect(forAlice.get(ownId)).toBe(bobMark.lastReadAt);
     expect(forAlice.get(firstId)).toBeNull();
 
     await app.request
@@ -255,7 +261,7 @@ describe('Read receipts', () => {
       .send({ readReceiptsEnabled: true });
 
     const visibleAgain = await readAtFor(bob.headers);
-    expect(visibleAgain.get(firstId)).not.toBeNull();
+    expect(visibleAgain.get(firstId)).toBe(aliceMark.lastReadAt);
   });
 
   it('suppresses readAt on soft-deleted messages', async () => {
@@ -275,5 +281,23 @@ describe('Read receipts', () => {
     const tombstone = messages.find((item) => item.id === messageId);
     expect(tombstone?.deletedAt).not.toBeNull();
     expect(tombstone?.readAt).toBeNull();
+  });
+
+  it('reports unread counts when re-opening an existing direct chat', async () => {
+    const { alice, bob, chatId } = await createPair();
+    await send(bob.headers, chatId, 'unread from bob');
+
+    const reopened = expectSuccess<{ id: string; unreadCount: number }>(
+      await app.request.post('/api/chats').set(alice.headers).send({ participantId: bob.id }),
+      200,
+    );
+    const listed = expectSuccess<Array<{ id: string; unreadCount: number }>>(
+      await app.request.get('/api/chats').set(alice.headers),
+      200,
+    );
+
+    expect(reopened.id).toBe(chatId);
+    expect(reopened.unreadCount).toBe(1);
+    expect(listed.find((chat) => chat.id === chatId)?.unreadCount).toBe(1);
   });
 });
