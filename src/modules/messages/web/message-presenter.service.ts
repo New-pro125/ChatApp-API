@@ -3,6 +3,7 @@ import { CORE_TYPES } from '@/core/container/core.types.js';
 import type { MediaAccess } from '@/core/media/media-access.port.js';
 import type { MessageRecord } from '@/modules/messages/logic/entities/message-record.js';
 import type { ReadReceiptContext } from '@/modules/messages/logic/entities/read-receipt-context.js';
+import type { PinIndicators } from '@/modules/messages/logic/ports/message-pin.repository.js';
 
 @injectable()
 export class MessagePresenter {
@@ -11,7 +12,7 @@ export class MessagePresenter {
   async present(
     message: MessageRecord,
     receipts?: ReadReceiptContext,
-    pinnedAtById: ReadonlyMap<string, Date> = new Map(),
+    pinnedAtById: ReadonlyMap<string, PinIndicators> = new Map(),
   ): Promise<Record<string, unknown>> {
     const base = {
       id: message.id,
@@ -26,7 +27,8 @@ export class MessagePresenter {
       deletedAt: message.deletedAt?.toISOString() ?? null,
       createdAt: message.createdAt.toISOString(),
       readAt: this.readAt(message, receipts),
-      pinnedAt: pinnedAtById.get(message.id)?.toISOString() ?? null,
+      pinnedAt: pinnedAtById.get(message.id)?.pinnedAt.toISOString() ?? null,
+      pinExpiresAt: pinnedAtById.get(message.id)?.expiresAt.toISOString() ?? null,
       ciphertext: message.ciphertext,
       nonce: message.nonce,
       ephemeralPublicKey: message.ephemeralPublicKey,

@@ -5,6 +5,7 @@ import type { MessagingPolicy } from '@/modules/messages/logic/messaging-policy.
 import type { MessageRepository } from '@/modules/messages/logic/ports/message.repository.js';
 import type {
   MessagePinRepository,
+  PinIndicators,
   PinRecord,
 } from '@/modules/messages/logic/ports/message-pin.repository.js';
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
@@ -12,6 +13,7 @@ import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 export interface PinnedMessage {
   readonly message: MessageRecord;
   readonly pinnedAt: Date;
+  readonly expiresAt: Date;
 }
 
 /** Owns pin authorization, validation, and ordered listing. */
@@ -23,11 +25,17 @@ export class PinService {
     @inject(MESSAGES_TYPES.MessagePinRepository) private readonly pins: MessagePinRepository,
   ) {}
 
-  async pin(userId: string, chatId: string, messageId: string): Promise<PinRecord> {
+  async pin(
+    userId: string,
+    chatId: string,
+    messageId: string,
+    durationSeconds: number,
+  ): Promise<PinRecord> {
     await this.policy.requireMember(chatId, userId);
     await this.requireLiveMessage(chatId, messageId);
 
-    const pin = await this.pins.pin(chatId, userId, messageId);
+    const expiresAt = new Date(Date.now() + durationSeconds * 1_000);
+    const pin = await this.pins.pin(chatId, userId, messageId, expiresAt);
 
     if (pin === null) {
       throw new ConflictException('Pin limit reached for this chat');
@@ -56,7 +64,9 @@ export class PinService {
     return records.flatMap((record) => {
       const message = byId.get(record.messageId);
 
-      return message === undefined ? [] : [{ message, pinnedAt: record.pinnedAt }];
+      return message === undefined
+        ? []
+        : [{ message, pinnedAt: record.pinnedAt, expiresAt: record.expiresAt }];
     });
   }
 
@@ -65,7 +75,7 @@ export class PinService {
     chatId: string,
     viewerId: string,
     messageIds: readonly string[],
-  ): Promise<Map<string, Date>> {
+  ): Promise<Map<string, PinIndicators>> {
     return this.pins.listPinnedFor(chatId, viewerId, messageIds);
   }
 

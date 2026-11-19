@@ -9,6 +9,7 @@ import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 import {
   chatParamsSchema,
   messageParamsSchema,
+  pinMessageSchema,
 } from '@/modules/messages/web/dto/message.schemas.js';
 import type { MessagePresenter } from '@/modules/messages/web/message-presenter.service.js';
 
@@ -24,7 +25,8 @@ export class PinController {
 
   pin: RequestHandler = async (req, res) => {
     const { chatId, messageId } = messageParamsSchema.parse(req.params);
-    const pin = await this.pins.pin(this.requireUser(req).id, chatId, messageId);
+    const { durationSeconds } = pinMessageSchema.parse(req.body ?? {});
+    const pin = await this.pins.pin(this.requireUser(req).id, chatId, messageId, durationSeconds);
 
     this.response.created(res, pin);
   };
@@ -41,9 +43,14 @@ export class PinController {
     const { chatId } = chatParamsSchema.parse(req.params);
     const pinned = await this.pins.list(userId, chatId);
     const receipts = await this.receipts.contextFor(chatId, userId);
-    const pinnedAtById = new Map(pinned.map((item) => [item.message.id, item.pinnedAt]));
+    const pinnedBy = new Map(
+      pinned.map((item) => [
+        item.message.id,
+        { pinnedAt: item.pinnedAt, expiresAt: item.expiresAt },
+      ]),
+    );
     const items = await Promise.all(
-      pinned.map((item) => this.presenter.present(item.message, receipts, pinnedAtById)),
+      pinned.map((item) => this.presenter.present(item.message, receipts, pinnedBy)),
     );
 
     this.response.list(res, items);

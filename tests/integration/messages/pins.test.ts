@@ -6,6 +6,7 @@ import { MessagingApiFixture } from './messaging-api.fixture.js';
 interface PinResult {
   messageId: string;
   pinnedAt: string;
+  expiresAt: string;
 }
 
 describe('Pinned messages HTTP API', () => {
@@ -45,8 +46,16 @@ describe('Pinned messages HTTP API', () => {
     return created.id;
   }
 
-  function pin(headers: Record<string, string>, chatId: string, messageId: string) {
-    return app.request.post(`/api/chats/${chatId}/messages/${messageId}/pin`).set(headers);
+  function pin(
+    headers: Record<string, string>,
+    chatId: string,
+    messageId: string,
+    duration = 3600,
+  ) {
+    return app.request
+      .post(`/api/chats/${chatId}/messages/${messageId}/pin`)
+      .set(headers)
+      .send({ durationSeconds: duration });
   }
 
   it('pins idempotently, lists newest-first, and unpins to 204', async () => {
@@ -56,8 +65,10 @@ describe('Pinned messages HTTP API', () => {
 
     const firstPin = expectSuccess<PinResult>(await pin(alice.headers, chatId, first), 201);
     expect(firstPin.messageId).toBe(first);
+    expect(new Date(firstPin.expiresAt).getTime()).toBeGreaterThan(Date.now());
     const duplicate = expectSuccess<PinResult>(await pin(alice.headers, chatId, first), 201);
     expect(duplicate.pinnedAt).toBe(firstPin.pinnedAt);
+    expect(duplicate.expiresAt).toBe(firstPin.expiresAt);
     await pin(alice.headers, chatId, second);
 
     const listed = expectSuccess<Array<{ id: string; pinnedAt: string | null }>>(
@@ -145,6 +156,73 @@ describe('Pinned messages HTTP API', () => {
     );
   });
 
+  it('rejects invalid durationSeconds with 400 VALIDATION_ERROR', async () => {
+    const { alice, bob, chatId } = await pair();
+    const messageId = await send(bob.headers, chatId, 'guarded');
+
+    expectError(
+      await app.request
+        .post(`/api/chats/${chatId}/messages/${messageId}/pin`)
+        .set(alice.headers)
+        .send({}),
+      400,
+      'VALIDATION_ERROR',
+    );
+    expectError(await pin(alice.headers, chatId, messageId, 59), 400, 'VALIDATION_ERROR');
+    expectError(await pin(alice.headers, chatId, messageId, 604801), 400, 'VALIDATION_ERROR');
+    expectError(await pin(alice.headers, chatId, messageId, 60.5), 400, 'VALIDATION_ERROR');
+  });
+
+  it('exposes pinExpiresAt only to the pinning user', async () => {
+    const { alice, bob, chatId } = await pair();
+    const messageId = await send(bob.headers, chatId, 'private expiry');
+    await pin(alice.headers, chatId, messageId, 604800);
+
+    const alicePins = expectSuccess<Array<{ id: string; pinExpiresAt: string | null }>>(
+      await app.request.get(`/api/chats/${chatId}/pins`).set(alice.headers),
+      200,
+    );
+    expect(alicePins[0]?.pinExpiresAt).not.toBeNull();
+
+    const bobPins = expectSuccess<Array<{ id: string; pinExpiresAt: string | null }>>(
+      await app.request.get(`/api/chats/${chatId}/pins`).set(bob.headers),
+      200,
+    );
+    expect(bobPins).toEqual([]);
+
+    const bobHistory = expectSuccess<
+      Array<{ id: string; pinnedAt: string | null; pinExpiresAt: string | null }>
+    >(await app.request.get(`/api/chats/${chatId}/messages`).set(bob.headers), 200);
+    const bobRow = bobHistory.find((message) => message.id === messageId);
+    expect(bobRow?.pinnedAt).toBeNull();
+    expect(bobRow?.pinExpiresAt).toBeNull();
+  });
+
+  it('hides elapsed pins and frees a cap slot', async () => {
+    const { alice, bob, chatId } = await pair();
+    const ids: string[] = [];
+    for (let index = 0; index < 11; index += 1) {
+      ids.push(await send(bob.headers, chatId, `expiring ${index}`));
+    }
+    for (const id of ids.slice(0, 10)) {
+      expectSuccess(await pin(alice.headers, chatId, id), 201);
+    }
+    expectError(await pin(alice.headers, chatId, ids[10] as string), 409, 'CONFLICT');
+
+    await app.pool.query(
+      `UPDATE message_pins SET expires_at = now() - interval '1 second'
+       WHERE chat_id = $1 AND user_id = $2 AND message_id = $3`,
+      [chatId, alice.id, ids[0]],
+    );
+
+    const after = expectSuccess<Array<{ id: string }>>(
+      await app.request.get(`/api/chats/${chatId}/pins`).set(alice.headers),
+      200,
+    );
+    expect(after.map((message) => message.id)).not.toContain(ids[0]);
+    expectSuccess(await pin(alice.headers, chatId, ids[10] as string), 201);
+  });
+
   it('pins in a secret chat without changing ciphertext', async () => {
     const alice = await fixture.verifiedUser('Alice');
     const bob = await fixture.verifiedUser('Bob');
@@ -164,10 +242,16 @@ describe('Pinned messages HTTP API', () => {
 
     expectSuccess(await pin(alice.headers, chatId, sent.id), 201);
     const history = expectSuccess<
-      Array<{ id: string; ciphertext: string; pinnedAt: string | null }>
+      Array<{
+        id: string;
+        ciphertext: string;
+        pinnedAt: string | null;
+        pinExpiresAt: string | null;
+      }>
     >(await app.request.get(`/api/chats/${chatId}/messages`).set(alice.headers), 200);
     const row = history.find((message) => message.id === sent.id);
     expect(row?.ciphertext).toBe(ciphertext);
     expect(row?.pinnedAt).not.toBeNull();
+    expect(row?.pinExpiresAt).not.toBeNull();
   });
 });

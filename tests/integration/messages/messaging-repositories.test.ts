@@ -456,7 +456,12 @@ describe('Messaging repositories', () => {
     expect(map.get(message.id)?.expiresAt).toBeInstanceOf(Date);
 
     // A duplicate keeps its original timestamp.
-    const duplicate = await pins.pin(chat.id, alice.id, message.id, new Date(Date.now() + 3_600_000));
+    const duplicate = await pins.pin(
+      chat.id,
+      alice.id,
+      message.id,
+      new Date(Date.now() + 3_600_000),
+    );
     expect(duplicate?.pinnedAt.toISOString()).toBe(first?.pinnedAt.toISOString());
 
     expect(await pins.unpin(chat.id, alice.id, message.id)).toBe(true);

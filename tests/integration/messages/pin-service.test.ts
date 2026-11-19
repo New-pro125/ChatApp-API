@@ -67,19 +67,23 @@ describe('PinService', () => {
     await members.add(other.id, outsider.id);
     const foreign = await messages.create({ chatId: other.id, senderId: outsider.id, body: 'x' });
 
-    await expect(pins.pin(outsider.id, chat.id, foreign.id)).rejects.toThrow(
+    await expect(pins.pin(outsider.id, chat.id, foreign.id, 3_600)).rejects.toThrow(
       'You are not a member of this chat',
     );
-    await expect(pins.pin(alice.id, chat.id, foreign.id)).rejects.toMatchObject({ status: 404 });
+    await expect(pins.pin(alice.id, chat.id, foreign.id, 3_600)).rejects.toMatchObject({
+      status: 404,
+    });
   });
 
   it('rejects a soft-deleted message and omits it from the list', async () => {
     const { alice, bob, chat } = await pair();
     const message = await messages.create({ chatId: chat.id, senderId: bob.id, body: 'gone' });
-    await pins.pin(alice.id, chat.id, message.id);
+    await pins.pin(alice.id, chat.id, message.id, 3_600);
     await messages.markDeleted(chat.id, message.id, new Date());
 
-    await expect(pins.pin(alice.id, chat.id, message.id)).rejects.toMatchObject({ status: 404 });
+    await expect(pins.pin(alice.id, chat.id, message.id, 3_600)).rejects.toMatchObject({
+      status: 404,
+    });
     expect(await pins.list(alice.id, chat.id)).toEqual([]);
   });
 
@@ -91,11 +95,13 @@ describe('PinService', () => {
         senderId: bob.id,
         body: `message ${index}`,
       });
-      await pins.pin(alice.id, chat.id, message.id);
+      await pins.pin(alice.id, chat.id, message.id, 3_600);
     }
     const extra = await messages.create({ chatId: chat.id, senderId: bob.id, body: 'extra' });
 
-    await expect(pins.pin(alice.id, chat.id, extra.id)).rejects.toBeInstanceOf(ConflictException);
+    await expect(pins.pin(alice.id, chat.id, extra.id, 3_600)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
     expect(await pins.list(alice.id, chat.id)).toHaveLength(10);
   });
 
@@ -103,9 +109,9 @@ describe('PinService', () => {
     const { alice, bob, chat } = await pair();
     const first = await messages.create({ chatId: chat.id, senderId: bob.id, body: 'first' });
     const second = await messages.create({ chatId: chat.id, senderId: bob.id, body: 'second' });
-    await pins.pin(alice.id, chat.id, first.id);
+    await pins.pin(alice.id, chat.id, first.id, 3_600);
     await new Promise((resolve) => setTimeout(resolve, 5));
-    await pins.pin(alice.id, chat.id, second.id);
+    await pins.pin(alice.id, chat.id, second.id, 3_600);
 
     const list = await pins.list(alice.id, chat.id);
     expect(list.map((item) => item.message.id)).toEqual([second.id, first.id]);
@@ -117,7 +123,7 @@ describe('PinService', () => {
     const aliceToken = await auth.mintTokens(alice);
     const bobToken = await auth.mintTokens(bob);
     const message = await messages.create({ chatId: chat.id, senderId: bob.id, body: 'visible' });
-    await pins.pin(alice.id, chat.id, message.id);
+    await pins.pin(alice.id, chat.id, message.id, 3_600);
 
     async function pinnedAtFor(headers: Record<string, string>): Promise<string | null> {
       const response = await app.request.get(`/api/chats/${chat.id}/messages`).set(headers);
@@ -128,5 +134,36 @@ describe('PinService', () => {
 
     expect(await pinnedAtFor(auth.bearerHeader(aliceToken.accessToken))).not.toBeNull();
     expect(await pinnedAtFor(auth.bearerHeader(bobToken.accessToken))).toBeNull();
+  });
+
+  it('returns a server-computed expiry and keeps active re-pins idempotent', async () => {
+    const { alice, bob, chat } = await pair();
+    const message = await messages.create({ chatId: chat.id, senderId: bob.id, body: 'timed' });
+
+    const before = Date.now();
+    const first = await pins.pin(alice.id, chat.id, message.id, 60);
+    const after = Date.now();
+
+    expect(first.expiresAt.getTime()).toBeGreaterThanOrEqual(before + 60_000);
+    expect(first.expiresAt.getTime()).toBeLessThanOrEqual(after + 60_000);
+
+    const duplicate = await pins.pin(alice.id, chat.id, message.id, 604800);
+    expect(duplicate.pinnedAt.toISOString()).toBe(first.pinnedAt.toISOString());
+    expect(duplicate.expiresAt.toISOString()).toBe(first.expiresAt.toISOString());
+  });
+
+  it('omits elapsed pins from list after the row is aged out', async () => {
+    const { alice, bob, chat } = await pair();
+    const message = await messages.create({ chatId: chat.id, senderId: bob.id, body: 'aged' });
+    await pins.pin(alice.id, chat.id, message.id, 60);
+    await app.pool.query(
+      `UPDATE message_pins SET expires_at = now() - interval '1 second'
+       WHERE chat_id = $1 AND user_id = $2 AND message_id = $3`,
+      [chat.id, alice.id, message.id],
+    );
+
+    const list = await pins.list(alice.id, chat.id);
+    expect(list).toEqual([]);
+    expect(list[0]?.expiresAt).toBeUndefined();
   });
 });
