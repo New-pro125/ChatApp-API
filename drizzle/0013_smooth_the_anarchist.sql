@@ -1,0 +1,2 @@
+ALTER TABLE "messages" DROP CONSTRAINT "messages_text_body_check";--> statement-breakpoint
+ALTER TABLE "messages" ADD CONSTRAINT "messages_text_body_check" CHECK ("type" <> 'text' or "body" is not null);

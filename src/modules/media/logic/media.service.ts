@@ -6,11 +6,18 @@ import { CORE_TYPES } from '@/core/container/core.types.js';
 import {
   InvalidMediaInputException,
   MediaInfectedException,
+  MediaInUseException,
   MediaNotFoundException,
   MediaNotReadyException,
   MediaScanUnavailableException,
 } from '@/core/errors/domain.error.js';
 import { ObjectStoreException, VirusScannerException } from '@/core/errors/repository.error.js';
+import type {
+  IncomingMediaUpload,
+  MediaAsset,
+  MediaDownload,
+} from '@/core/media/media-access.port.js';
+import type { MediaReferenceReader } from '@/core/media/media-reference.port.js';
 import type { MediaObjectRecord } from '@/modules/media/logic/entities/media-object-record.js';
 import type { MediaObjectRepository } from '@/modules/media/logic/ports/media-object.repository.js';
 import type {
@@ -49,6 +56,8 @@ export class MediaService {
     @inject(MEDIA_TYPES.ObjectStore) private readonly store: ObjectStore,
     @inject(MEDIA_TYPES.VirusScanner) private readonly scanner: VirusScanner,
     @inject(CORE_TYPES.Config) private readonly config: AppConfig,
+    @inject(CORE_TYPES.MediaReferenceReader)
+    private readonly references: MediaReferenceReader,
   ) {}
 
   async initiate(userId: string, contentType: string, sizeBytes: number): Promise<UploadTicket> {
@@ -148,6 +157,7 @@ export class MediaService {
 
   async remove(userId: string, mediaId: string): Promise<void> {
     const record = await this.requireOwned(userId, mediaId);
+    await this.assertDeletable(mediaId);
     await this.store.delete(record.objectKey);
 
     const deleted = await this.objects.deleteOwned(mediaId, userId);
@@ -155,6 +165,156 @@ export class MediaService {
     if (!deleted) {
       throw new MediaNotFoundException();
     }
+  }
+
+  async requireReadyForUse(mediaId: string, userId: string): Promise<MediaAsset> {
+    const record = await this.requireOwned(userId, mediaId);
+    if (record.status !== 'ready') {
+      throw new MediaNotReadyException();
+    }
+    return this.toAsset(record);
+  }
+
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: mirrors finalize with extra storage, byte-count, and outage-detail guards
+  async storeAndScan(userId: string, input: IncomingMediaUpload): Promise<MediaAsset> {
+    if (!this.config.media.allowedContentTypes.includes(input.contentType)) {
+      throw new InvalidMediaInputException(`Unsupported media content type: ${input.contentType}`);
+    }
+
+    if (
+      !Number.isSafeInteger(input.sizeBytes) ||
+      input.sizeBytes < 1 ||
+      input.sizeBytes > this.config.media.maxBytes
+    ) {
+      throw new InvalidMediaInputException('Media size is outside the configured limit');
+    }
+
+    const record = await this.objects.create({
+      ownerUserId: userId,
+      contentType: input.contentType,
+      sizeBytes: input.sizeBytes,
+    });
+
+    // Let storage consume the stream while the parser validates the complete
+    // request. A late multipart failure then wins over a short-body upload,
+    // which would otherwise surface as an opaque repository error.
+    let stored: Promise<void> | undefined;
+    try {
+      stored = this.store.putStream(
+        record.objectKey,
+        input.contentType,
+        input.sizeBytes,
+        input.body,
+      );
+      // Observe early storage failures now: assertComplete() can suspend while
+      // a slow client uploads, and Node throws on an unhandled rejection.
+      void stored.catch(() => {});
+      await input.assertComplete();
+      await stored;
+    } catch (error) {
+      await stored?.catch(() => {});
+      await this.failStorageScan(record.id, userId, null);
+      throw error;
+    }
+
+    const head = await this.store.head(record.objectKey);
+    if (head === null) {
+      await this.failStorageScan(record.id, userId, null);
+      throw new MediaNotFoundException('Uploaded object was not found');
+    }
+
+    if (head.contentType !== record.contentType || head.sizeBytes !== record.sizeBytes) {
+      await this.objects.markFailed(
+        record.id,
+        userId,
+        'Uploaded object metadata does not match ticket',
+        head.versionId,
+      );
+      throw new InvalidMediaInputException('Uploaded object metadata does not match the ticket');
+    }
+
+    let sha256: string | null = null;
+    if (this.config.media.scanRequired) {
+      let outcome: ScanOutcome;
+
+      try {
+        outcome = await this.scanWithHash(record.objectKey, head.versionId);
+      } catch (error) {
+        if (error instanceof ObjectStoreException) {
+          await this.failStorageScan(record.id, userId, head.versionId);
+          throw error;
+        }
+        if (
+          error instanceof VirusScannerException ||
+          error instanceof MediaScanUnavailableException
+        ) {
+          throw new MediaScanUnavailableException(undefined, {
+            details: { mediaId: record.id },
+            cause: error,
+          });
+        }
+        throw error;
+      }
+
+      if (outcome.verdict === 'infected') {
+        await this.objects.transitionToQuarantined(
+          record.id,
+          userId,
+          outcome.signature,
+          null,
+          head.versionId,
+        );
+        throw new MediaInfectedException();
+      }
+      sha256 = outcome.sha256;
+    }
+
+    const ready = await this.objects.transitionToReady(record.id, userId, sha256, head.versionId);
+    if (ready === null) {
+      throw new MediaNotReadyException();
+    }
+    return this.toAsset(ready);
+  }
+
+  async signForReader(mediaId: string): Promise<MediaDownload> {
+    const record = await this.objects.findById(mediaId);
+    if (record === null || record.status !== 'ready') {
+      throw new MediaNotReadyException();
+    }
+    const ticket = await this.toDownloadTicket(record);
+    return {
+      url: ticket.url,
+      expiresAt: ticket.expiresAt,
+      contentType: ticket.contentType,
+      sizeBytes: ticket.sizeBytes,
+    };
+  }
+
+  async releaseIfUnreferenced(mediaId: string): Promise<void> {
+    if (await this.references.hasLiveReferences(mediaId)) {
+      return;
+    }
+    const record = await this.objects.findById(mediaId);
+    if (record === null) {
+      return;
+    }
+    await this.store.delete(record.objectKey);
+    await this.objects.deleteOwned(record.id, record.ownerUserId);
+  }
+
+  async assertDeletable(mediaId: string): Promise<void> {
+    if (await this.references.hasLiveReferences(mediaId)) {
+      throw new MediaInUseException();
+    }
+  }
+
+  private toAsset(record: MediaObjectRecord): MediaAsset {
+    return {
+      id: record.id,
+      contentType: record.contentType,
+      sizeBytes: record.sizeBytes,
+      sha256: record.sha256,
+    };
   }
 
   private async scanWithHash(objectKey: string, versionId: string | null): Promise<ScanOutcome> {

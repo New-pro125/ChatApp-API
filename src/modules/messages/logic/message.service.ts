@@ -11,7 +11,9 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@/core/errors/http.error.js';
-import type { MessageRecord } from '@/modules/messages/logic/entities/message-record.js';
+import type { IncomingMediaUpload, MediaAccess } from '@/core/media/media-access.port.js';
+import type { MediaKind, MessageRecord } from '@/modules/messages/logic/entities/message-record.js';
+import type { MediaKindPolicy } from '@/modules/messages/logic/media-kind.policy.js';
 import type { MessagingPolicy } from '@/modules/messages/logic/messaging-policy.service.js';
 import type { ChatRepository } from '@/modules/messages/logic/ports/chat.repository.js';
 import type { ChatMemberRepository } from '@/modules/messages/logic/ports/chat-member.repository.js';
@@ -35,6 +37,31 @@ export interface SendSecretMessageInput {
   readonly ephemeralPublicKey: string;
 }
 
+/** A ready, owner-checked media object attached to a cloud message. */
+export interface SendMediaMessageInput {
+  mediaId: string;
+  kind: MediaKind;
+  caption?: string | undefined;
+  durationMs?: number | undefined;
+  width?: number | undefined;
+  height?: number | undefined;
+  replyToMessageId?: string | undefined;
+}
+
+/** A single-request upload; the stored id comes from `storeAndScan`. */
+export interface SendMediaFromUploadInput {
+  kind: MediaKind;
+  caption?: string | undefined;
+  durationMs?: number | undefined;
+  width?: number | undefined;
+  height?: number | undefined;
+  replyToMessageId?: string | undefined;
+  contentType: string;
+  sizeBytes: number;
+  body: IncomingMediaUpload['body'];
+  assertComplete: () => Promise<void>;
+}
+
 /** Owns message writes, history reads, and sender-only mutations. */
 @injectable()
 export class MessageService {
@@ -46,6 +73,8 @@ export class MessageService {
     @inject(CORE_TYPES.E2eeDeviceReader) private readonly e2eeDevices: E2eeDeviceReader,
     @inject(CORE_TYPES.E2eeCiphertextValidator)
     private readonly ciphertextValidator: E2eeCiphertextValidator,
+    @inject(CORE_TYPES.MediaAccess) private readonly mediaAccess: MediaAccess,
+    @inject(MESSAGES_TYPES.MediaKindPolicy) private readonly kinds: MediaKindPolicy,
   ) {}
 
   async send(userId: string, chatId: string, input: SendMessageInput): Promise<MessageRecord> {
@@ -67,6 +96,87 @@ export class MessageService {
       senderId: userId,
       body: input.body,
       type: 'text',
+      replyToMessageId: input.replyToMessageId ?? null,
+    });
+  }
+
+  async sendMedia(
+    userId: string,
+    chatId: string,
+    input: SendMediaMessageInput,
+  ): Promise<MessageRecord> {
+    await this.rejectSecretChat(chatId);
+    await this.policy.requireMember(chatId, userId);
+    await this.policy.assertChatUnblocked(chatId, userId);
+
+    if (input.replyToMessageId !== undefined) {
+      const target = await this.messages.findById(chatId, input.replyToMessageId);
+
+      if (!target) {
+        throw new BadRequestException('Reply target must belong to this chat');
+      }
+    }
+
+    const asset = await this.mediaAccess.requireReadyOwned(input.mediaId, userId);
+    this.kinds.assertMatches(input.kind, asset.contentType);
+
+    return this.messages.create({
+      chatId,
+      senderId: userId,
+      body: null,
+      type: 'media',
+      media: {
+        mediaId: input.mediaId,
+        kind: input.kind,
+        caption: input.caption ?? null,
+        durationMs: input.durationMs ?? null,
+        width: input.width ?? null,
+        height: input.height ?? null,
+      },
+      replyToMessageId: input.replyToMessageId ?? null,
+    });
+  }
+
+  async sendMediaFromUpload(
+    userId: string,
+    chatId: string,
+    input: SendMediaFromUploadInput,
+  ): Promise<MessageRecord> {
+    await this.rejectSecretChat(chatId);
+    await this.policy.requireMember(chatId, userId);
+    await this.policy.assertChatUnblocked(chatId, userId);
+
+    if (input.replyToMessageId !== undefined) {
+      const target = await this.messages.findById(chatId, input.replyToMessageId);
+
+      if (!target) {
+        throw new BadRequestException('Reply target must belong to this chat');
+      }
+    }
+
+    // Validate before storing so a rejected kind cannot leave an unowned ready object.
+    this.kinds.assertMatches(input.kind, input.contentType);
+
+    const asset = await this.mediaAccess.storeAndScan(userId, {
+      contentType: input.contentType,
+      sizeBytes: input.sizeBytes,
+      body: input.body,
+      assertComplete: input.assertComplete,
+    });
+
+    return this.messages.create({
+      chatId,
+      senderId: userId,
+      body: null,
+      type: 'media',
+      media: {
+        mediaId: asset.id,
+        kind: input.kind,
+        caption: input.caption ?? null,
+        durationMs: input.durationMs ?? null,
+        width: input.width ?? null,
+        height: input.height ?? null,
+      },
       replyToMessageId: input.replyToMessageId ?? null,
     });
   }
@@ -140,6 +250,10 @@ export class MessageService {
       throw new BadRequestException('Deleted messages cannot be edited');
     }
 
+    if (message.media !== null) {
+      throw new BadRequestException('Media messages cannot be edited');
+    }
+
     const edited = await this.messages.editBody(chatId, messageId, body, new Date());
 
     if (!edited) {
@@ -156,7 +270,13 @@ export class MessageService {
     const message = await this.requireMessage(chatId, messageId);
     this.assertSender(message, userId);
 
+    const mediaId = message.media?.mediaId ?? null;
+
     await this.messages.markDeleted(chatId, messageId, new Date());
+
+    if (mediaId !== null) {
+      await this.mediaAccess.releaseIfUnreferenced(mediaId);
+    }
   }
 
   async forward(
@@ -177,15 +297,16 @@ export class MessageService {
 
     const original = await this.requireMessage(sourceChatId, messageId);
 
-    if (original.deletedAt !== null || original.body === null) {
+    if (original.deletedAt !== null || (original.body === null && original.media === null)) {
       throw new BadRequestException('Deleted messages cannot be forwarded');
     }
 
     return this.messages.create({
       chatId: targetChatId,
       senderId: userId,
-      body: original.body,
-      type: 'text',
+      body: original.media === null ? original.body : null,
+      type: original.media === null ? 'text' : 'media',
+      ...(original.media === null ? {} : { media: original.media }),
       forwardedFromChatId: sourceChatId,
       forwardedFromMessageId: messageId,
     });

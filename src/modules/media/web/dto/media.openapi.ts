@@ -21,7 +21,7 @@ const mediaErrors = {
   401: errorResponse('Authentication is required'),
   403: errorResponse('A verified email is required'),
   404: errorResponse('Media object not found'),
-  409: errorResponse('Media object is not ready'),
+  409: errorResponse('Media object is not ready or is referenced by a message'),
   422: errorResponse('The uploaded file is infected'),
   429: errorResponse('Too many media requests'),
   500: errorResponse('Unexpected server error'),

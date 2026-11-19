@@ -1,6 +1,7 @@
 import type { Readable } from 'node:stream';
 import { DeleteObjectsCommand, ListObjectVersionsCommand, S3Client } from '@aws-sdk/client-s3';
 import { VirusScannerException } from '@/core/errors/repository.error.js';
+import type { MediaReferenceReader } from '@/core/media/media-reference.port.js';
 import { MediaService } from '@/modules/media/logic/media.service.js';
 import type { ObjectStore } from '@/modules/media/logic/ports/object-store.js';
 import type { ScanResult, VirusScanner } from '@/modules/media/logic/ports/virus-scanner.js';
@@ -47,6 +48,12 @@ export class FakeVirusScanner implements VirusScanner {
   }
 }
 
+class FakeReferences implements MediaReferenceReader {
+  hasLiveReferences(): Promise<boolean> {
+    return Promise.resolve(false);
+  }
+}
+
 export class MediaFixture {
   readonly scanner = new FakeVirusScanner();
 
@@ -84,6 +91,11 @@ export class MediaFixture {
     this.keys.push(ticket.objectKey);
   }
 
+  /** Registers an object created by a request that does not return an upload ticket. */
+  trackKey(objectKey: string): void {
+    this.keys.push(objectKey);
+  }
+
   async put(ticket: UploadTicketResponse, bytes: Buffer, contentType: string): Promise<void> {
     const response = await fetch(ticket.uploadUrl, {
       method: 'PUT',
@@ -117,6 +129,7 @@ export class MediaFixture {
           module.mediaContainer.get(MEDIA_TYPES.ObjectStore),
           module.mediaContainer.get(MEDIA_TYPES.VirusScanner),
           bypassConfig,
+          new FakeReferences(),
         ),
       );
   }

@@ -1,11 +1,13 @@
 /// <reference types="zod-openapi" />
 import { z } from 'zod';
 import {
+  apiErrorResponseSchema,
   commonErrorResponses,
   noContentResponse,
   successEnvelope,
 } from '@/core/http/openapi/openapi.schemas.js';
-import type { RouteContract } from '@/core/http/openapi/openapi.types.js';
+import type { OpenApiResponseContract, RouteContract } from '@/core/http/openapi/openapi.types.js';
+import { combinedMediaFieldsSchema } from '@/core/media/media-form.schema.js';
 import {
   chatParamsSchema,
   editMessageSchema,
@@ -13,11 +15,17 @@ import {
   listMessagesQuerySchema,
   messageParamsSchema,
   openDirectChatSchema,
+  sendMediaMessageSchema,
   sendMessageSchema,
   sendSecretMessageSchema,
 } from '@/modules/messages/web/dto/message.schemas.js';
 
 const bearerSecurity = [{ bearerAuth: [] }] as const;
+
+export const errorResponse = (description: string): OpenApiResponseContract => ({
+  description,
+  schema: apiErrorResponseSchema,
+});
 
 export const participantSummarySchema = z
   .object({
@@ -44,7 +52,7 @@ export const messageSchema = z
     id: z.uuid(),
     chatId: z.uuid(),
     senderId: z.uuid(),
-    type: z.enum(['text', 'system', 'secret']),
+    type: z.enum(['text', 'system', 'secret', 'media']),
     body: z.string().nullable(),
     replyToMessageId: z.uuid().nullable(),
     forwardedFromChatId: z.uuid().nullable(),
@@ -57,6 +65,20 @@ export const messageSchema = z
     ephemeralPublicKey: z.string().nullable(),
     senderDeviceId: z.uuid().nullable(),
     recipientDeviceId: z.uuid().nullable(),
+    media: z
+      .object({
+        mediaId: z.uuid(),
+        kind: z.enum(['image', 'video', 'document', 'voice_note', 'sticker', 'gif']),
+        contentType: z.string(),
+        sizeBytes: z.number().int().positive(),
+        caption: z.string().nullable(),
+        durationMs: z.number().int().nullable(),
+        width: z.number().int().nullable(),
+        height: z.number().int().nullable(),
+        downloadUrl: z.url(),
+        expiresAt: z.iso.datetime(),
+      })
+      .nullable(),
   })
   .meta({ id: 'Message' });
 
@@ -123,6 +145,41 @@ export const messageContracts = {
     responses: {
       201: { description: 'The sent message', schema: messageResponse },
       ...commonErrorResponses,
+    },
+  },
+  sendMedia: {
+    operationId: 'messages.sendMedia',
+    tags: ['Messages'],
+    summary: 'Attach a ready media object to a cloud chat message',
+    security: bearerSecurity,
+    request: {
+      params: chatParamsSchema,
+      body: sendMediaMessageSchema,
+    },
+    responses: {
+      201: { description: 'The attached media message', schema: messageResponse },
+      ...commonErrorResponses,
+      409: errorResponse('Media object is not ready'),
+    },
+  },
+  uploadMedia: {
+    operationId: 'messages.uploadMedia',
+    tags: ['Messages'],
+    summary: 'Upload a file and send it as a cloud media message',
+    security: bearerSecurity,
+    request: {
+      params: chatParamsSchema,
+      body: combinedMediaFieldsSchema.extend({
+        file: z.string().meta({ format: 'binary' }),
+      }),
+      contentType: 'multipart/form-data',
+    },
+    responses: {
+      201: { description: 'The uploaded media message', schema: messageResponse },
+      ...commonErrorResponses,
+      409: errorResponse('Media object is not ready'),
+      422: errorResponse('The uploaded file is infected'),
+      503: errorResponse('Virus scanning is temporarily unavailable'),
     },
   },
   sendSecretMessage: {

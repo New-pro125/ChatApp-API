@@ -52,6 +52,7 @@ const STATUS_BY_DOMAIN_CODE: Partial<Record<ErrorCode, number>> = {
   [ErrorCode.MEDIA_SCAN_UNAVAILABLE]: 503,
   [ErrorCode.MEDIA_INFECTED]: 422,
   [ErrorCode.MEDIA_NOT_READY]: 409,
+  [ErrorCode.MEDIA_IN_USE]: 409,
 };
 
 /**
