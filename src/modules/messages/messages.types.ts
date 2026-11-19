@@ -11,6 +11,7 @@ export const MESSAGES_TYPES = {
   ChatService: Symbol.for('Messages.ChatService'),
   MessageService: Symbol.for('Messages.MessageService'),
   PinService: Symbol.for('Messages.PinService'),
+  PinCleanupWorker: Symbol.for('Messages.PinCleanupWorker'),
   PinController: Symbol.for('Messages.PinController'),
   MediaKindPolicy: Symbol.for('Messages.MediaKindPolicy'),
   MediaReferenceReader: Symbol.for('Messages.MediaReferenceReader'),

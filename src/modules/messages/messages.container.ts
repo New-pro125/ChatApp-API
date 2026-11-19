@@ -13,6 +13,7 @@ import { MediaReferenceReaderService } from '@/modules/messages/logic/media-refe
 import { MessageService } from '@/modules/messages/logic/message.service.js';
 import { MessagingPolicy } from '@/modules/messages/logic/messaging-policy.service.js';
 import { PinService } from '@/modules/messages/logic/pin.service.js';
+import { PinCleanupWorker } from '@/modules/messages/logic/pin-cleanup.worker.js';
 import type { ChatRepository } from '@/modules/messages/logic/ports/chat.repository.js';
 import type { ChatMemberRepository } from '@/modules/messages/logic/ports/chat-member.repository.js';
 import type { MessageRepository } from '@/modules/messages/logic/ports/message.repository.js';
@@ -60,6 +61,9 @@ export class MessagesContainer extends Container {
     this.bind<ChatService>(MESSAGES_TYPES.ChatService).to(ChatService).inSingletonScope();
     this.bind<MessageService>(MESSAGES_TYPES.MessageService).to(MessageService).inSingletonScope();
     this.bind<PinService>(MESSAGES_TYPES.PinService).to(PinService).inSingletonScope();
+    this.bind<PinCleanupWorker>(MESSAGES_TYPES.PinCleanupWorker)
+      .to(PinCleanupWorker)
+      .inSingletonScope();
     this.bind<MediaKindPolicy>(MESSAGES_TYPES.MediaKindPolicy)
       .to(MediaKindPolicy)
       .inSingletonScope();

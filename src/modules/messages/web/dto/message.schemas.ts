@@ -28,6 +28,13 @@ export const messageParamsSchema = z.object({
   messageId: z.uuid(),
 });
 
+/** Body for creating a time-bounded pin: 60 seconds to 7 days. */
+export const pinMessageSchema = z.object({
+  durationSeconds: z.number().int().min(60).max(604800),
+});
+
+export type PinMessageSchema = z.infer<typeof pinMessageSchema>;
+
 /** Body for sending a text message, optionally as a reply in the same chat. */
 export const sendMessageSchema = z.object({
   body: messageBodySchema,

@@ -218,6 +218,7 @@ describe('Messaging schema', () => {
       'message_id',
       'user_id',
       'pinned_at',
+      'expires_at',
     ]);
 
     const keys = await app.pool.query<{ constraint_name: string; constraint_type: string }>(
@@ -225,6 +226,12 @@ describe('Messaging schema', () => {
        WHERE table_name = 'message_pins' ORDER BY constraint_type, constraint_name`,
     );
     expect(keys.rows.map((row) => row.constraint_name)).toContain('message_pins_pkey');
+
+    const indexes = await app.pool.query<{ indexname: string }>(
+      `SELECT indexname FROM pg_indexes
+        WHERE tablename = 'message_pins' ORDER BY indexname`,
+    );
+    expect(indexes.rows.map((row) => row.indexname)).toContain('message_pins_expires_at_index');
 
     const fks = await app.pool.query<{ target: string; on_delete: string }>(
       `SELECT ccu.table_name AS target, rc.delete_rule AS on_delete
@@ -257,12 +264,14 @@ describe('Messaging schema', () => {
     ).rows[0]?.id as string;
 
     await app.pool.query(
-      `INSERT INTO message_pins (chat_id, message_id, user_id) VALUES ($1, $2, $3)`,
+      `INSERT INTO message_pins (chat_id, message_id, user_id, expires_at)
+       VALUES ($1, $2, $3, now() + interval '1 hour')`,
       [chatId, messageId, first.id],
     );
     await expect(
       app.pool.query(
-        `INSERT INTO message_pins (chat_id, message_id, user_id) VALUES ($1, $2, $3)`,
+        `INSERT INTO message_pins (chat_id, message_id, user_id, expires_at)
+         VALUES ($1, $2, $3, now() + interval '1 hour')`,
         [chatId, messageId, first.id],
       ),
     ).rejects.toThrow(/message_pins_pkey/);
