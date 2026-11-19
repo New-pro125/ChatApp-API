@@ -1,4 +1,5 @@
 import type {
+  MessageMediaFields,
   MessageRecord,
   MessageType,
 } from '@/modules/messages/logic/entities/message-record.js';
@@ -7,8 +8,9 @@ import type {
 export interface CreateMessageInput {
   chatId: string;
   senderId: string;
-  body: string;
+  body: string | null;
   type?: MessageType;
+  media?: MessageMediaFields;
   replyToMessageId?: string | null;
   forwardedFromChatId?: string | null;
   forwardedFromMessageId?: string | null;
@@ -56,4 +58,7 @@ export interface MessageRepository {
 
   /** Soft-deletes a message once; false when it is missing or already deleted. */
   markDeleted(chatId: string, id: string, deletedAt: Date): Promise<boolean>;
+
+  /** Whether any message still points at the media object and is not deleted. */
+  hasLiveMediaReferences(mediaId: string): Promise<boolean>;
 }

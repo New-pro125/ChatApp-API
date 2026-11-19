@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   check,
   index,
+  integer,
   pgTable,
   primaryKey,
   text,
@@ -10,6 +11,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { users } from '@/core/database/schema/auth.schema.js';
+import { mediaObjects } from '@/core/database/schema/media.schema.js';
 
 /**
  * Messaging tables owned by the `messages` module.
@@ -92,6 +94,12 @@ export const messages = pgTable(
       .references(() => users.id, { onDelete: 'restrict' }),
     type: text('type').notNull().default('text'),
     body: text('body'),
+    mediaId: uuid('media_id').references(() => mediaObjects.id, { onDelete: 'restrict' }),
+    mediaKind: text('media_kind'),
+    caption: text('caption'),
+    durationMs: integer('duration_ms'),
+    width: integer('width'),
+    height: integer('height'),
     replyToMessageId: uuid('reply_to_message_id'),
     forwardedFromChatId: uuid('forwarded_from_chat_id'),
     forwardedFromMessageId: uuid('forwarded_from_message_id'),
@@ -109,11 +117,16 @@ export const messages = pgTable(
     // `messages` is partitioned, so PostgreSQL propagates an added CHECK to
     // every partition. Qualified references such as `"messages"."type"` are
     // invalid inside `messages_p0`; these checks use unqualified identifiers.
-    check('messages_type_check', sql`${sql.identifier('type')} in ('text', 'system', 'secret')`),
+    check(
+      'messages_type_check',
+      sql`${sql.identifier('type')} in ('text', 'system', 'secret', 'media')`,
+    ),
     check(
       'messages_body_length_check',
       sql`${table.body} is null or char_length(${table.body}) between 1 and 4096`,
     ),
+    // Only text rows need a body; media rows carry a reference and secret
+    // rows carry ciphertext, so both must keep `body` null.
     check('messages_text_body_check', sql`${table.type} <> 'text' or ${table.body} is not null`),
     check(
       'messages_secret_shape_check',
@@ -127,9 +140,38 @@ export const messages = pgTable(
       'messages_secret_no_reply_forward_check',
       sql`${sql.identifier('type')} <> 'secret' or (${sql.identifier('reply_to_message_id')} is null and ${sql.identifier('forwarded_from_chat_id')} is null and ${sql.identifier('forwarded_from_message_id')} is null)`,
     ),
+    // Soft deletion clears the media columns to release the FK, so the shape
+    // requirement applies to live rows only.
+    check(
+      'messages_media_shape_check',
+      sql`${sql.identifier('type')} <> 'media' or ${sql.identifier('deleted_at')} is not null or (${sql.identifier('media_id')} is not null and ${sql.identifier('media_kind')} in ('image', 'video', 'document', 'voice_note', 'sticker', 'gif') and ${sql.identifier('body')} is null and ${sql.identifier('ciphertext')} is null and ${sql.identifier('nonce')} is null and ${sql.identifier('ephemeral_public_key')} is null and ${sql.identifier('sender_device_id')} is null and ${sql.identifier('recipient_device_id')} is null)`,
+    ),
+    check(
+      'messages_non_media_no_media_check',
+      sql`${sql.identifier('type')} = 'media' or (${sql.identifier('media_id')} is null and ${sql.identifier('media_kind')} is null and ${sql.identifier('caption')} is null and ${sql.identifier('duration_ms')} is null and ${sql.identifier('width')} is null and ${sql.identifier('height')} is null)`,
+    ),
+    check(
+      'messages_media_caption_check',
+      sql`${sql.identifier('caption')} is null or char_length(${sql.identifier('caption')}) between 1 and 1000`,
+    ),
+    check(
+      'messages_media_duration_check',
+      sql`${sql.identifier('duration_ms')} is null or (${sql.identifier('duration_ms')} between 1 and 86400000)`,
+    ),
+    check(
+      'messages_media_width_check',
+      sql`${sql.identifier('width')} is null or (${sql.identifier('width')} between 1 and 16384)`,
+    ),
+    check(
+      'messages_media_height_check',
+      sql`${sql.identifier('height')} is null or (${sql.identifier('height')} between 1 and 16384)`,
+    ),
     // Non-unique, so it may omit the partition key. Keeps the `sender_id`
     // RESTRICT foreign key check from scanning all sixteen partitions.
     index('messages_sender_id_index').on(table.senderId),
+    // Non-unique too, so the deliberate live-reference lookup can scan all
+    // sixteen partitions without carrying the partition key.
+    index('messages_media_id_index').on(table.mediaId),
     index('messages_sender_device_id_index').on(table.chatId, table.senderDeviceId),
     index('messages_recipient_device_id_index').on(table.chatId, table.recipientDeviceId),
   ],
