@@ -38,6 +38,7 @@ export class TestApp {
         chats,
         email_verification_codes,
         media_objects,
+        message_pins,
         messages,
         mfa_challenges,
         mfa_recovery_codes,

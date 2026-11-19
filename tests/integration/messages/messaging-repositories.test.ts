@@ -3,6 +3,7 @@ import { UniqueConstraintException } from '@/core/errors/repository.error.js';
 import type { ChatRepository } from '@/modules/messages/logic/ports/chat.repository.js';
 import type { ChatMemberRepository } from '@/modules/messages/logic/ports/chat-member.repository.js';
 import type { MessageRepository } from '@/modules/messages/logic/ports/message.repository.js';
+import type { MessagePinRepository } from '@/modules/messages/logic/ports/message-pin.repository.js';
 import { MessagesContainer } from '@/modules/messages/messages.container.js';
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 import { AuthFixture } from '../../fixtures/auth.fixture.js';
@@ -44,6 +45,7 @@ describe('Messaging repositories', () => {
   let chats: ChatRepository;
   let members: ChatMemberRepository;
   let messages: MessageRepository;
+  let pins: MessagePinRepository;
 
   beforeAll(async () => {
     app = await TestApp.create();
@@ -53,6 +55,7 @@ describe('Messaging repositories', () => {
     chats = container.get(MESSAGES_TYPES.ChatRepository);
     members = container.get(MESSAGES_TYPES.ChatMemberRepository);
     messages = container.get(MESSAGES_TYPES.MessageRepository);
+    pins = container.get(MESSAGES_TYPES.MessagePinRepository);
   });
 
   afterAll(async () => {
@@ -415,5 +418,101 @@ describe('Messaging repositories', () => {
 
     const current = await members.find(chat.id, alice.id);
     expect(current?.lastReadMessageId).toBe(second.id);
+  });
+
+  it('pins, lists, and unpins a message for one user only', async () => {
+    const alice = await auth.createUser();
+    const bob = await auth.createUser();
+    const chat = await chats.create({
+      type: 'direct',
+      title: null,
+      directKey: [alice.id, bob.id].sort().join(':'),
+      createdBy: alice.id,
+    });
+    await members.add(chat.id, alice.id);
+    await members.add(chat.id, bob.id);
+    const message = await messages.create({
+      chatId: chat.id,
+      senderId: bob.id,
+      body: 'important',
+    });
+
+    const first = await pins.pin(chat.id, alice.id, message.id);
+    expect(first?.messageId).toBe(message.id);
+    expect(first?.pinnedAt).toBeInstanceOf(Date);
+    expect((await pins.list(chat.id, alice.id)).map((pin) => pin.messageId)).toEqual([message.id]);
+    expect(await pins.list(chat.id, bob.id)).toEqual([]);
+
+    const map = await pins.listPinnedFor(chat.id, alice.id, [message.id]);
+    expect(map.get(message.id)?.toISOString()).toBe(first?.pinnedAt.toISOString());
+
+    // A duplicate keeps its original timestamp.
+    const duplicate = await pins.pin(chat.id, alice.id, message.id);
+    expect(duplicate?.pinnedAt.toISOString()).toBe(first?.pinnedAt.toISOString());
+
+    expect(await pins.unpin(chat.id, alice.id, message.id)).toBe(true);
+    expect(await pins.unpin(chat.id, alice.id, message.id)).toBe(false);
+    expect(await pins.list(chat.id, alice.id)).toEqual([]);
+  });
+
+  it('enforces the ten-pin cap under concurrent writes', async () => {
+    const alice = await auth.createUser();
+    const bob = await auth.createUser();
+    const chat = await chats.create({
+      type: 'direct',
+      title: null,
+      directKey: [alice.id, bob.id].sort().join(':'),
+      createdBy: alice.id,
+    });
+    await members.add(chat.id, alice.id);
+    await members.add(chat.id, bob.id);
+
+    const ids: string[] = [];
+    for (let index = 0; index < 11; index += 1) {
+      const message = await messages.create({
+        chatId: chat.id,
+        senderId: bob.id,
+        body: `message ${index}`,
+      });
+      ids.push(message.id);
+    }
+
+    for (const id of ids.slice(0, 9)) {
+      expect(await pins.pin(chat.id, alice.id, id)).not.toBeNull();
+    }
+
+    const results = await Promise.all([
+      pins.pin(chat.id, alice.id, ids[9] as string),
+      pins.pin(chat.id, alice.id, ids[10] as string),
+    ]);
+
+    expect(results.filter((result) => result !== null)).toHaveLength(1);
+    expect(await pins.list(chat.id, alice.id)).toHaveLength(10);
+  });
+
+  it('removes every user pin of a message and lists only live rows by id', async () => {
+    const alice = await auth.createUser();
+    const bob = await auth.createUser();
+    const chat = await chats.create({
+      type: 'direct',
+      title: null,
+      directKey: [alice.id, bob.id].sort().join(':'),
+      createdBy: alice.id,
+    });
+    await members.add(chat.id, alice.id);
+    await members.add(chat.id, bob.id);
+    const pinned = await messages.create({ chatId: chat.id, senderId: bob.id, body: 'pin me' });
+    const removed = await messages.create({ chatId: chat.id, senderId: bob.id, body: 'delete me' });
+
+    await pins.pin(chat.id, alice.id, pinned.id);
+    await pins.pin(chat.id, bob.id, pinned.id);
+    await messages.markDeleted(chat.id, removed.id, new Date());
+
+    const loaded = await messages.listByIds(chat.id, [pinned.id, removed.id]);
+    expect(loaded.map((message) => message.id)).toEqual([pinned.id]);
+
+    await pins.removeForMessage(chat.id, pinned.id);
+    expect(await pins.list(chat.id, alice.id)).toEqual([]);
+    expect(await pins.list(chat.id, bob.id)).toEqual([]);
   });
 });

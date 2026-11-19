@@ -65,6 +65,9 @@ export interface MessageRepository {
   /** Newest message id in a chat, or null when the chat has no messages. */
   maxIdByChat(chatId: string): Promise<string | null>;
 
+  /** Live messages among the given ids, scoped by chat for partition pruning. */
+  listByIds(chatId: string, ids: readonly string[]): Promise<MessageRecord[]>;
+
   /** Live messages from other participants newer than the reader watermark. */
   countUnread(chatId: string, readerId: string, watermarkId: string | null): Promise<number>;
 

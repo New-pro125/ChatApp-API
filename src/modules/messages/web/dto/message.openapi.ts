@@ -71,6 +71,7 @@ export const messageSchema = z
     deletedAt: z.iso.datetime().nullable(),
     createdAt: z.iso.datetime(),
     readAt: z.iso.datetime().nullable(),
+    pinnedAt: z.iso.datetime().nullable(),
     ciphertext: z.string().nullable(),
     nonce: z.string().nullable(),
     ephemeralPublicKey: z.string().nullable(),
@@ -98,6 +99,15 @@ const chatListResponse = successEnvelope(z.array(chatSchema), 'ChatListResponse'
 const readWatermarkResponse = successEnvelope(readWatermarkSchema, 'ReadWatermarkResponse');
 const messageResponse = successEnvelope(messageSchema, 'MessageResponse');
 const messageListResponse = successEnvelope(z.array(messageSchema), 'MessageListResponse');
+
+export const pinSchema = z
+  .object({
+    messageId: z.uuid(),
+    pinnedAt: z.iso.datetime(),
+  })
+  .meta({ id: 'MessagePin' });
+
+const pinResponse = successEnvelope(pinSchema, 'MessagePinResponse');
 
 /**
  * OpenAPI contracts for one-on-one messaging.
@@ -255,6 +265,45 @@ export const messageContracts = {
     request: { params: messageParamsSchema, body: forwardMessageSchema },
     responses: {
       201: { description: 'The forwarded copy', schema: messageResponse },
+      ...commonErrorResponses,
+    },
+  },
+  pinMessage: {
+    operationId: 'messages.pinMessage',
+    tags: ['Messages'],
+    summary: 'Pin a message for the caller',
+    description:
+      'Adds a private bookmark to a live message in a direct or secret chat. Each user has at most ten pins per chat; an eleventh returns 409 CONFLICT. Pinning again keeps the original timestamp.',
+    security: bearerSecurity,
+    request: { params: messageParamsSchema },
+    responses: {
+      201: { description: 'The created pin', schema: pinResponse },
+      ...commonErrorResponses,
+      409: errorResponse('Pin limit reached'),
+    },
+  },
+  unpinMessage: {
+    operationId: 'messages.unpinMessage',
+    tags: ['Messages'],
+    summary: 'Remove the caller pin from a message',
+    description: 'Idempotent: removing a pin that does not exist still returns 204.',
+    security: bearerSecurity,
+    request: { params: messageParamsSchema },
+    responses: {
+      204: noContentResponse,
+      ...commonErrorResponses,
+    },
+  },
+  listPinned: {
+    operationId: 'messages.listPinned',
+    tags: ['Messages'],
+    summary: 'List the caller pinned messages in a chat',
+    description:
+      'Returns the caller private bookmarks, newest pin first, as full message views with pinnedAt. Pins belonging to the other participant are never returned.',
+    security: bearerSecurity,
+    request: { params: chatParamsSchema },
+    responses: {
+      200: { description: 'The caller pinned messages', schema: messageListResponse },
       ...commonErrorResponses,
     },
   },

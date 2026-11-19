@@ -279,6 +279,9 @@ use the shared `rl:messages:` bucket (120 requests per 15 minutes).
 | `POST`   | `/api/chats`                                     | Open (or retrieve) a direct chat            |
 | `GET`    | `/api/chats`                                     | List the caller's chats, most active first  |
 | `POST`   | `/api/chats/:chatId/read`                        | Advance the caller's read watermark         |
+| `POST`   | `/api/chats/:chatId/messages/:messageId/pin`     | Pin a message for the caller                |
+| `DELETE` | `/api/chats/:chatId/messages/:messageId/pin`     | Remove the caller's pin (idempotent)        |
+| `GET`    | `/api/chats/:chatId/pins`                        | List the caller's pinned messages           |
 | `POST`   | `/api/chats/:chatId/messages`                    | Send a text message                         |
 | `GET`    | `/api/chats/:chatId/messages`                    | List history with keyset pagination         |
 | `PATCH`  | `/api/chats/:chatId/messages/:messageId`         | Edit an owned message                       |
@@ -327,6 +330,20 @@ peer's watermark, and only when **both** peers have
 `readReceiptsEnabled = true`. If either peer disables it, `readAt` is `null` in
 both directions, while each peer's own unread counts keep working. `readAt` is
 also `null` for deleted messages and for incoming messages.
+
+### Pinned messages
+
+Pins are private, per-user bookmarks on live messages. Both direct cloud chats
+and secret chats are supported, and pinning only stores metadata: secret-chat
+ciphertext, nonce, and device ids are never read or changed. Each user may pin at
+most 10 messages per chat; an 11th pin returns `409 CONFLICT`. Pinning the same
+message again is idempotent and keeps the original `pinnedAt` timestamp.
+`DELETE /api/chats/:chatId/messages/:messageId/pin` is idempotent and returns
+`204` even when no pin exists. `GET /api/chats/:chatId/pins` returns the caller's
+pins newest-first as full message views; the other participant's pins are never
+listed or exposed. Message history and pin-list rows carry `pinnedAt` for the
+caller only, and it is `null` for everyone else. Soft-deleting a message removes
+all of its pins.
 
 ### Media messages
 

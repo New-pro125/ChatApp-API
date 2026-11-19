@@ -2,6 +2,7 @@ export const MESSAGES_TYPES = {
   ChatRepository: Symbol.for('Messages.ChatRepository'),
   ChatMemberRepository: Symbol.for('Messages.ChatMemberRepository'),
   MessageRepository: Symbol.for('Messages.MessageRepository'),
+  MessagePinRepository: Symbol.for('Messages.MessagePinRepository'),
 
   RequestScope: Symbol.for('Messages.RequestScope'),
   MessagesRateLimiter: Symbol.for('Messages.MessagesRateLimiter'),
@@ -9,6 +10,8 @@ export const MESSAGES_TYPES = {
   ReadReceiptService: Symbol.for('Messages.ReadReceiptService'),
   ChatService: Symbol.for('Messages.ChatService'),
   MessageService: Symbol.for('Messages.MessageService'),
+  PinService: Symbol.for('Messages.PinService'),
+  PinController: Symbol.for('Messages.PinController'),
   MediaKindPolicy: Symbol.for('Messages.MediaKindPolicy'),
   MediaReferenceReader: Symbol.for('Messages.MediaReferenceReader'),
   ChatController: Symbol.for('Messages.ChatController'),
