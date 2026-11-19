@@ -86,6 +86,34 @@ export const chatMembers = pgTable(
   ],
 );
 
+/**
+ * Per-user bookmarks. There is deliberately no FK to `messages`: that table is
+ * hash partitioned and a bookmark must not restrict message deletion. Pins are
+ * removed explicitly when a message is soft-deleted, and chat/user deletion
+ * cascades from the parent rows.
+ */
+export const messagePins = pgTable(
+  'message_pins',
+  {
+    chatId: uuid('chat_id')
+      .notNull()
+      .references(() => chats.id, { onDelete: 'cascade' }),
+    messageId: uuid('message_id').notNull(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    pinnedAt: timestamp('pinned_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.chatId, table.userId, table.messageId], name: 'message_pins_pkey' }),
+    index('message_pins_chat_user_pinned_at_index').on(
+      table.chatId,
+      table.userId,
+      table.pinnedAt.desc(),
+    ),
+  ],
+);
+
 export const messages = pgTable(
   'messages',
   {

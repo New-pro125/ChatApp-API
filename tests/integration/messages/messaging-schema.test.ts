@@ -207,4 +207,71 @@ describe('Messaging schema', () => {
     );
     expect(foreignKeys.rows[0]?.count).toBe(0);
   });
+
+  it('creates message_pins with a composite key and cascade FKs but no message FK', async () => {
+    const columns = await app.pool.query<{ column_name: string; data_type: string }>(
+      `SELECT column_name, data_type FROM information_schema.columns
+       WHERE table_name = 'message_pins' ORDER BY ordinal_position`,
+    );
+    expect(columns.rows.map((row) => row.column_name)).toEqual([
+      'chat_id',
+      'message_id',
+      'user_id',
+      'pinned_at',
+    ]);
+
+    const keys = await app.pool.query<{ constraint_name: string; constraint_type: string }>(
+      `SELECT constraint_name, constraint_type FROM information_schema.table_constraints
+       WHERE table_name = 'message_pins' ORDER BY constraint_type, constraint_name`,
+    );
+    expect(keys.rows.map((row) => row.constraint_name)).toContain('message_pins_pkey');
+
+    const fks = await app.pool.query<{ target: string; on_delete: string }>(
+      `SELECT ccu.table_name AS target, rc.delete_rule AS on_delete
+       FROM information_schema.table_constraints tc
+       JOIN information_schema.referential_constraints rc
+         ON rc.constraint_name = tc.constraint_name
+       JOIN information_schema.constraint_column_usage ccu
+         ON ccu.constraint_name = tc.constraint_name
+       WHERE tc.table_name = 'message_pins' AND tc.constraint_type = 'FOREIGN KEY'`,
+    );
+    expect(fks.rows).toEqual(
+      expect.arrayContaining([
+        { target: 'chats', on_delete: 'CASCADE' },
+        { target: 'users', on_delete: 'CASCADE' },
+      ]),
+    );
+    expect(fks.rows.some((row) => row.target === 'messages')).toBe(false);
+  });
+
+  it('stores one pin per (chat, user, message) and orders pins by pinned_at', async () => {
+    const first = await auth.createUser();
+    const second = await auth.createUser();
+    const chatId = await createDirectChat(first.id, second.id);
+    await app.pool.query(
+      `INSERT INTO messages (chat_id, sender_id, body) VALUES ($1, $2, 'pinned')`,
+      [chatId, second.id],
+    );
+    const messageId = (
+      await app.pool.query<{ id: string }>(`SELECT id FROM messages WHERE chat_id = $1`, [chatId])
+    ).rows[0]?.id as string;
+
+    await app.pool.query(
+      `INSERT INTO message_pins (chat_id, message_id, user_id) VALUES ($1, $2, $3)`,
+      [chatId, messageId, first.id],
+    );
+    await expect(
+      app.pool.query(
+        `INSERT INTO message_pins (chat_id, message_id, user_id) VALUES ($1, $2, $3)`,
+        [chatId, messageId, first.id],
+      ),
+    ).rejects.toThrow(/message_pins_pkey/);
+
+    const ordered = await app.pool.query<{ message_id: string }>(
+      `SELECT message_id FROM message_pins
+       WHERE chat_id = $1 AND user_id = $2 ORDER BY pinned_at DESC`,
+      [chatId, first.id],
+    );
+    expect(ordered.rows.map((row) => row.message_id)).toEqual([messageId]);
+  });
 });
