@@ -206,6 +206,9 @@ export class MediaService {
         input.sizeBytes,
         input.body,
       );
+      // Observe early storage failures now: assertComplete() can suspend while
+      // a slow client uploads, and Node throws on an unhandled rejection.
+      void stored.catch(() => {});
       await input.assertComplete();
       await stored;
     } catch (error) {

@@ -10,6 +10,7 @@ import {
   MediaNotReadyException,
   MediaScanUnavailableException,
 } from '@/core/errors/domain.error.js';
+import { BadRequestException } from '@/core/errors/http.error.js';
 import { ObjectStoreException, VirusScannerException } from '@/core/errors/repository.error.js';
 import type { MediaReferenceReader } from '@/core/media/media-reference.port.js';
 import { MediaObjectRecord } from '@/modules/media/logic/entities/media-object-record.js';
@@ -159,6 +160,7 @@ class FakeStore implements ObjectStore {
   getStreamCalls: Array<string | null> = [];
   presignGetCalls: Array<string | null> = [];
   putStreamCalls: Array<{ objectKey: string; contentType: string; sizeBytes: number }> = [];
+  putStreamRejection: Error | null = null;
 
   presignPut() {
     return Promise.resolve({
@@ -170,6 +172,9 @@ class FakeStore implements ObjectStore {
 
   putStream(objectKey: string, contentType: string, sizeBytes: number): Promise<void> {
     this.putStreamCalls.push({ objectKey, contentType, sizeBytes });
+    if (this.putStreamRejection !== null) {
+      return Promise.reject(this.putStreamRejection);
+    }
     return Promise.resolve();
   }
 
@@ -426,6 +431,43 @@ describe('MediaService', () => {
     expect(objects.record?.status).toBe('failed');
     expect(objects.markFailedCalls).toBe(1);
     expect(objects.record?.versionId).toBe(VERSION);
+  });
+
+  it('handles a fast storage rejection while multipart validation is still pending', async () => {
+    store.putStreamRejection = new ObjectStoreException('Failed to upload media object stream');
+    const validationError = new BadRequestException('File size does not match sizeBytes');
+    let rejectCompletion!: (error: unknown) => void;
+    const completion = new Promise<void>((_resolve, reject) => {
+      rejectCompletion = reject;
+    });
+    completion.catch(() => {});
+    const input = {
+      contentType: 'image/png',
+      sizeBytes: 5,
+      body: Readable.from([Buffer.from('bytes')]),
+      assertComplete: () => completion,
+    };
+
+    const unhandled: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on('unhandledRejection', onUnhandledRejection);
+    try {
+      const pending = service.storeAndScan(OWNER, input);
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+      expect(unhandled).toEqual([]);
+      rejectCompletion(validationError);
+      const rejection = await pending.catch((error: unknown) => error);
+      expect(rejection).toBe(validationError);
+      expect(unhandled).toEqual([]);
+      expect(objects.record?.status).toBe('failed');
+      expect(objects.markFailedCalls).toBe(1);
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection);
+    }
   });
 
   it('releaseIfUnreferenced is a no-op while a live reference exists', async () => {

@@ -13,9 +13,9 @@ export const combinedMediaFieldsSchema = z.object({
   kind: mediaKindSchema,
   sizeBytes: z.coerce.number().int().positive(),
   caption: z.string().trim().min(1).max(1000).optional(),
-  durationMs: z.number().int().min(1).max(86_400_000).optional(),
-  width: z.number().int().min(1).max(16_384).optional(),
-  height: z.number().int().min(1).max(16_384).optional(),
+  durationMs: z.coerce.number().int().min(1).max(86_400_000).optional(),
+  width: z.coerce.number().int().min(1).max(16_384).optional(),
+  height: z.coerce.number().int().min(1).max(16_384).optional(),
   replyToMessageId: z.uuid().optional(),
 });
 

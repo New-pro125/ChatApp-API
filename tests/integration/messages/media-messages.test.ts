@@ -90,6 +90,25 @@ describe('media message attach mode', () => {
     expect(await response.text()).toBe('clean-bytes');
   });
 
+  it('attaches a ready object with numeric media metadata via JSON', async () => {
+    const sender = await messaging.verifiedUser('Sender');
+    const recipient = await messaging.verifiedUser('Recipient');
+    const chatId = await messaging.openDirectChat(recipient.id, sender.headers);
+    const mediaId = await readyPng(sender.headers);
+
+    const sent = await app.request
+      .post(`/api/chats/${chatId}/messages/media`)
+      .set(sender.headers)
+      .send({ mediaId, kind: 'image', durationMs: 5000, width: 1920, height: 1080 });
+    const message = expectSuccess<{
+      media: { durationMs: number | null; width: number | null; height: number | null };
+    }>(sent, 201);
+
+    expect(message.media.durationMs).toBe(5000);
+    expect(message.media.width).toBe(1920);
+    expect(message.media.height).toBe(1080);
+  });
+
   it('rejects media in a secret chat before creating a message', async () => {
     const sender = await messaging.verifiedUser('Sender');
     const recipient = await messaging.verifiedUser('Recipient');

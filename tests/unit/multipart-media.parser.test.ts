@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BadRequestException } from '@/core/errors/http.error.js';
+import { combinedMediaFieldsSchema } from '@/core/media/media-form.schema.js';
 import { MultipartMediaParser } from '@/modules/messages/web/multipart-media.parser.js';
 
 function requestWith(body: Buffer, contentType: string, contentLength?: number) {
@@ -48,6 +49,44 @@ describe('MultipartMediaParser', () => {
     expect(parsed.contentType).toBe('image/png');
     expect(parsed.sizeBytes).toBe(file.length);
     await expect(parsed.assertComplete()).resolves.toBeUndefined();
+  });
+
+  it('coerces string duration, width and height metadata from multipart fields', async () => {
+    const file = Buffer.from('abc');
+    const body =
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="kind"\r\n\r\nvideo\r\n` +
+          `--${boundary}\r\nContent-Disposition: form-data; name="sizeBytes"\r\n\r\n3\r\n` +
+          `--${boundary}\r\nContent-Disposition: form-data; name="durationMs"\r\n\r\n5000\r\n` +
+          `--${boundary}\r\nContent-Disposition: form-data; name="width"\r\n\r\n1920\r\n` +
+          `--${boundary}\r\nContent-Disposition: form-data; name="height"\r\n\r\n1080\r\n` +
+          `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="x.mp4"\r\n` +
+          `Content-Type: video/mp4\r\n\r\n`,
+      ).toString('utf8') +
+      file.toString('utf8') +
+      `\r\n--${boundary}--\r\n`;
+
+    const parsed = await new MultipartMediaParser().parse(
+      requestWith(Buffer.from(body), `multipart/form-data; boundary=${boundary}`) as never,
+      1000,
+    );
+
+    expect(parsed.fields.durationMs).toBe(5000);
+    expect(parsed.fields.width).toBe(1920);
+    expect(parsed.fields.height).toBe(1080);
+    await expect(parsed.assertComplete()).resolves.toBeUndefined();
+  });
+
+  it('accepts numeric metadata values as well as multipart strings', () => {
+    expect(
+      combinedMediaFieldsSchema.parse({
+        kind: 'video',
+        sizeBytes: 3,
+        durationMs: 5000,
+        width: 1920,
+        height: 1080,
+      }),
+    ).toMatchObject({ durationMs: 5000, width: 1920, height: 1080 });
   });
 
   it('rejects a file that arrives before sizeBytes', async () => {
