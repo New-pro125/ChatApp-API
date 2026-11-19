@@ -103,6 +103,7 @@ export const messagePins = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     pinnedAt: timestamp('pinned_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   },
   (table) => [
     primaryKey({
@@ -114,6 +115,7 @@ export const messagePins = pgTable(
       table.userId,
       table.pinnedAt.desc(),
     ),
+    index('message_pins_expires_at_index').on(table.expiresAt),
   ],
 );
 

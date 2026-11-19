@@ -6,12 +6,13 @@ import type { PinRecord } from '@/modules/messages/logic/ports/message-pin.repos
 export const pinSelection = {
   messageId: messagePins.messageId,
   pinnedAt: messagePins.pinnedAt,
+  expiresAt: messagePins.expiresAt,
 } as const;
 
 export type PinRow = Pick<InferSelectModel<typeof messagePins>, keyof typeof pinSelection>;
 
 export class MessagePinMapper {
   toRecord(row: PinRow): PinRecord {
-    return { messageId: row.messageId, pinnedAt: row.pinnedAt };
+    return { messageId: row.messageId, pinnedAt: row.pinnedAt, expiresAt: row.expiresAt };
   }
 }
