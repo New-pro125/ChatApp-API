@@ -3,7 +3,6 @@ import { z } from 'zod';
 import {
   apiErrorResponseSchema,
   commonErrorResponses,
-  conflictErrorResponse,
   noContentResponse,
   successEnvelope,
 } from '@/core/http/openapi/openapi.schemas.js';
@@ -160,7 +159,7 @@ export const messageContracts = {
     responses: {
       201: { description: 'The attached media message', schema: messageResponse },
       ...commonErrorResponses,
-      409: conflictErrorResponse,
+      409: errorResponse('Conflict, including MEDIA_IN_USE'),
     },
   },
   uploadMedia: {
@@ -178,7 +177,7 @@ export const messageContracts = {
     responses: {
       201: { description: 'The uploaded media message', schema: messageResponse },
       ...commonErrorResponses,
-      409: conflictErrorResponse,
+      409: errorResponse('Conflict, including MEDIA_IN_USE'),
       422: errorResponse('The uploaded file is infected'),
       503: errorResponse('Virus scanning is temporarily unavailable'),
     },
