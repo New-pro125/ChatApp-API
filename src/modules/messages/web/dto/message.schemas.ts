@@ -56,5 +56,36 @@ export const forwardMessageSchema = z.object({
   targetChatId: z.uuid(),
 });
 
+export const mediaKindSchema = z.enum([
+  'image',
+  'video',
+  'document',
+  'voice_note',
+  'sticker',
+  'gif',
+]);
+
+const optionalMediaMetadata = {
+  caption: z.string().trim().min(1).max(1000).optional(),
+  durationMs: z.number().int().min(1).max(86_400_000).optional(),
+  width: z.number().int().min(1).max(16_384).optional(),
+  height: z.number().int().min(1).max(16_384).optional(),
+  replyToMessageId: z.uuid().optional(),
+};
+
+export const sendMediaMessageSchema = z.object({
+  mediaId: z.uuid(),
+  kind: mediaKindSchema,
+  ...optionalMediaMetadata,
+});
+
+export const combinedMediaFieldsSchema = z.object({
+  kind: mediaKindSchema,
+  sizeBytes: z.coerce.number().int().positive(),
+  ...optionalMediaMetadata,
+});
+
 export type SendMessageSchema = z.infer<typeof sendMessageSchema>;
 export type ListMessagesQuerySchema = z.infer<typeof listMessagesQuerySchema>;
+export type SendMediaMessageSchema = z.infer<typeof sendMediaMessageSchema>;
+export type CombinedMediaFieldsSchema = z.infer<typeof combinedMediaFieldsSchema>;

@@ -80,6 +80,18 @@ export class MessagesRouter {
         req.container.get<MessageController>(MESSAGES_TYPES.MessageController).send(req, res, next),
     );
 
+    routes.post(
+      '/:chatId/messages/media',
+      messageContracts.sendMedia,
+      this.requireAuth.handle,
+      this.requireVerifiedEmail.handle,
+      this.limiter.handle,
+      (req, res, next) =>
+        req.container
+          .get<MessageController>(MESSAGES_TYPES.MessageController)
+          .sendMedia(req, res, next),
+    );
+
     routes.get(
       '/:chatId/messages',
       messageContracts.listMessages,

@@ -3,7 +3,6 @@ import { inject, injectable } from 'inversify';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import { UnauthorizedException } from '@/core/errors/http.error.js';
 import type { ApiResponse } from '@/core/http/response/api-response.js';
-import type { MessageRecord } from '@/modules/messages/logic/entities/message-record.js';
 import type { MessageService } from '@/modules/messages/logic/message.service.js';
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 import {
@@ -12,14 +11,17 @@ import {
   forwardMessageSchema,
   listMessagesQuerySchema,
   messageParamsSchema,
+  sendMediaMessageSchema,
   sendMessageSchema,
   sendSecretMessageSchema,
 } from '@/modules/messages/web/dto/message.schemas.js';
+import type { MessagePresenter } from '@/modules/messages/web/message-presenter.service.js';
 
 @injectable()
 export class MessageController {
   constructor(
     @inject(MESSAGES_TYPES.MessageService) private readonly messages: MessageService,
+    @inject(MESSAGES_TYPES.MessagePresenter) private readonly presenter: MessagePresenter,
     @inject(CORE_TYPES.ApiResponse) private readonly response: ApiResponse,
   ) {}
 
@@ -29,7 +31,16 @@ export class MessageController {
     const input = sendMessageSchema.parse(req.body);
     const message = await this.messages.send(userId, chatId, input);
 
-    this.response.created(res, this.present(message));
+    this.response.created(res, await this.presenter.present(message));
+  };
+
+  sendMedia: RequestHandler = async (req, res) => {
+    const { userId } = this.requireAuth(req);
+    const { chatId } = chatParamsSchema.parse(req.params);
+    const input = sendMediaMessageSchema.parse(req.body);
+    const message = await this.messages.sendMedia(userId, chatId, input);
+
+    this.response.created(res, await this.presenter.present(message));
   };
 
   sendSecret: RequestHandler = async (req, res) => {
@@ -38,7 +49,7 @@ export class MessageController {
     const input = sendSecretMessageSchema.parse(req.body);
     const message = await this.messages.sendSecret(userId, deviceId, chatId, input);
 
-    this.response.created(res, this.present(message));
+    this.response.created(res, await this.presenter.present(message));
   };
 
   list: RequestHandler = async (req, res) => {
@@ -57,7 +68,7 @@ export class MessageController {
 
     this.response.cursor(
       res,
-      page.map((message) => this.present(message)),
+      await Promise.all(page.map((message) => this.presenter.present(message))),
       nextCursor,
     );
   };
@@ -68,7 +79,7 @@ export class MessageController {
     const { body } = editMessageSchema.parse(req.body);
     const message = await this.messages.edit(userId, chatId, messageId, body);
 
-    this.response.ok(res, this.present(message));
+    this.response.ok(res, await this.presenter.present(message));
   };
 
   remove: RequestHandler = async (req, res) => {
@@ -86,7 +97,7 @@ export class MessageController {
     const { targetChatId } = forwardMessageSchema.parse(req.body);
     const message = await this.messages.forward(userId, chatId, messageId, targetChatId);
 
-    this.response.created(res, this.present(message));
+    this.response.created(res, await this.presenter.present(message));
   };
 
   private requireAuth(req: Request): { userId: string; deviceId: string } {
@@ -95,27 +106,5 @@ export class MessageController {
     }
 
     return { userId: req.user.id, deviceId: req.auth.deviceId };
-  }
-
-  /** Redacts soft-deleted bodies into tombstones at the HTTP boundary. */
-  private present(message: MessageRecord) {
-    return {
-      id: message.id,
-      chatId: message.chatId,
-      senderId: message.senderId,
-      type: message.type,
-      body: message.deletedAt === null ? message.body : null,
-      replyToMessageId: message.replyToMessageId,
-      forwardedFromChatId: message.forwardedFromChatId,
-      forwardedFromMessageId: message.forwardedFromMessageId,
-      editedAt: message.editedAt?.toISOString() ?? null,
-      deletedAt: message.deletedAt?.toISOString() ?? null,
-      createdAt: message.createdAt.toISOString(),
-      ciphertext: message.ciphertext,
-      nonce: message.nonce,
-      ephemeralPublicKey: message.ephemeralPublicKey,
-      senderDeviceId: message.senderDeviceId,
-      recipientDeviceId: message.recipientDeviceId,
-    };
   }
 }
