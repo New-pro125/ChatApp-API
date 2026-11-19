@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { expectSuccess } from '../../helpers/assertions.js';
 import { TestApp } from '../../helpers/test-app.js';
 import { MessagingApiFixture } from './messaging-api.fixture.js';
 
@@ -133,5 +134,18 @@ describe('Chat API', () => {
     const response = await app.request.get('/api/chats');
 
     expect(response.status).toBe(401);
+  });
+
+  it('includes unreadCount in every chat row', async () => {
+    const alice = await fixture.verifiedUser('Alice');
+    const bob = await fixture.verifiedUser('Bob');
+    const chatId = await fixture.openDirectChat(bob.id, alice.headers);
+
+    const chats = expectSuccess<Array<{ id: string; unreadCount: number }>>(
+      await app.request.get('/api/chats').set(alice.headers),
+      200,
+    );
+
+    expect(chats.find((chat) => chat.id === chatId)?.unreadCount).toBe(0);
   });
 });

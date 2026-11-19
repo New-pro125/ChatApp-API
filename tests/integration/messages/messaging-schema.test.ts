@@ -184,4 +184,27 @@ describe('Messaging schema', () => {
       ),
     ).rejects.toThrow(/messages_p\d+_pkey/);
   });
+
+  it('stores nullable read watermarks on chat members without a message foreign key', async () => {
+    const columns = await app.pool.query<{ column_name: string; is_nullable: string }>(
+      `SELECT column_name, is_nullable FROM information_schema.columns
+        WHERE table_name = 'chat_members'
+          AND column_name IN ('last_read_message_id', 'last_read_at')
+        ORDER BY column_name`,
+    );
+
+    expect(columns.rows.map((row) => row.column_name)).toEqual([
+      'last_read_at',
+      'last_read_message_id',
+    ]);
+    expect(columns.rows.every((row) => row.is_nullable === 'YES')).toBe(true);
+
+    const foreignKeys = await app.pool.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM pg_constraint
+        WHERE conrelid = 'public.chat_members'::regclass
+          AND contype = 'f'
+          AND confrelid = 'public.messages'::regclass`,
+    );
+    expect(foreignKeys.rows[0]?.count).toBe(0);
+  });
 });

@@ -12,6 +12,8 @@ export const chatMemberSelection = {
   role: chatMembers.role,
   joinedAt: chatMembers.joinedAt,
   leftAt: chatMembers.leftAt,
+  lastReadMessageId: chatMembers.lastReadMessageId,
+  lastReadAt: chatMembers.lastReadAt,
 } as const;
 
 export type ChatMemberRow = Pick<
@@ -27,6 +29,8 @@ export class ChatMemberMapper {
       row.role as ChatMemberRole,
       row.joinedAt,
       row.leftAt,
+      row.lastReadMessageId,
+      row.lastReadAt,
     );
   }
 }

@@ -6,6 +6,7 @@ import type { ChatRecord, ChatType } from '@/modules/messages/logic/entities/cha
  *
  * The full user record never leaves the auth module; only the summary fields
  * needed to render a conversation row are carried across the boundary.
+ * `unreadCount` is caller-private and independent of receipt mutuality.
  */
 export class ChatView {
   readonly id: string;
@@ -17,6 +18,7 @@ export class ChatView {
   constructor(
     chat: ChatRecord,
     readonly participants: readonly UserSummary[],
+    readonly unreadCount: number,
   ) {
     this.id = chat.id;
     this.type = chat.type;

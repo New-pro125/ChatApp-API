@@ -61,4 +61,13 @@ export interface MessageRepository {
 
   /** Whether any message still points at the media object and is not deleted. */
   hasLiveMediaReferences(mediaId: string): Promise<boolean>;
+
+  /** Newest message id in a chat, or null when the chat has no messages. */
+  maxIdByChat(chatId: string): Promise<string | null>;
+
+  /** Live messages from other participants newer than the reader watermark. */
+  countUnread(chatId: string, readerId: string, watermarkId: string | null): Promise<number>;
+
+  /** Batched variant for chat lists; chats with zero unread may be absent. */
+  countUnreadByChats(readerId: string, chatIds: readonly string[]): Promise<Map<string, number>>;
 }

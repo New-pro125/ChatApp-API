@@ -17,6 +17,11 @@ export const chatParamsSchema = z.object({
   chatId: z.uuid(),
 });
 
+/** Body for advancing a chat's read watermark. An absent id means "up to now". */
+export const markReadSchema = z.object({
+  messageId: z.uuid().optional(),
+});
+
 /** Route parameters for operations on a single message. */
 export const messageParamsSchema = z.object({
   chatId: z.uuid(),

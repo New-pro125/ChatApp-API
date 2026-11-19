@@ -74,6 +74,10 @@ export const chatMembers = pgTable(
     role: text('role').notNull().default('member'),
     joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
     leftAt: timestamp('left_at', { withTimezone: true }),
+    // Read state is a watermark, not a per-message table. No FK to `messages`:
+    // that table is partitioned and hard-deletes must not be restricted.
+    lastReadMessageId: uuid('last_read_message_id'),
+    lastReadAt: timestamp('last_read_at', { withTimezone: true }),
   },
   (table) => [
     primaryKey({ columns: [table.chatId, table.userId], name: 'chat_members_pkey' }),

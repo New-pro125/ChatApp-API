@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { inject, injectable } from 'inversify';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import { PostgresErrorInspector } from '@/core/database/database.error-inspector.js';
@@ -112,6 +112,42 @@ export class PostgresChatMemberRepository implements ChatMemberRepository {
       return rows.length > 0;
     } catch (error) {
       throw new PersistenceException('Failed to remove chat member', { cause: error });
+    }
+  }
+
+  async markRead(chatId: string, userId: string, messageId: string): Promise<ChatMemberRecord> {
+    try {
+      const rows = await this.db
+        .update(chatMembers)
+        .set({ lastReadMessageId: messageId, lastReadAt: sql`now()` })
+        .where(
+          and(
+            eq(chatMembers.chatId, chatId),
+            eq(chatMembers.userId, userId),
+            or(isNull(chatMembers.lastReadMessageId), lt(chatMembers.lastReadMessageId, messageId)),
+          ),
+        )
+        .returning(chatMemberSelection);
+
+      const updated = rows[0];
+
+      if (updated) {
+        return this.mapper.toRecord(updated);
+      }
+
+      const current = await this.find(chatId, userId);
+
+      if (!current) {
+        throw new PersistenceException('Failed to mark chat read: membership not found');
+      }
+
+      return current;
+    } catch (error) {
+      if (error instanceof PersistenceException) {
+        throw error;
+      }
+
+      throw new PersistenceException('Failed to mark chat read', { cause: error });
     }
   }
 }

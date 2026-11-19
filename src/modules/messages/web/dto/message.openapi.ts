@@ -13,6 +13,7 @@ import {
   editMessageSchema,
   forwardMessageSchema,
   listMessagesQuerySchema,
+  markReadSchema,
   messageParamsSchema,
   openDirectChatSchema,
   sendMediaMessageSchema,
@@ -41,11 +42,20 @@ export const chatSchema = z
     id: z.uuid(),
     type: z.enum(['direct', 'secret', 'group', 'channel']),
     title: z.string().nullable(),
+    unreadCount: z.number().int().nonnegative(),
     participants: z.array(participantSummarySchema),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
   })
   .meta({ id: 'Chat' });
+
+export const readWatermarkSchema = z
+  .object({
+    chatId: z.uuid(),
+    lastReadMessageId: z.uuid().nullable(),
+    lastReadAt: z.iso.datetime().nullable(),
+  })
+  .meta({ id: 'ReadWatermark' });
 
 export const messageSchema = z
   .object({
@@ -60,6 +70,7 @@ export const messageSchema = z
     editedAt: z.iso.datetime().nullable(),
     deletedAt: z.iso.datetime().nullable(),
     createdAt: z.iso.datetime(),
+    readAt: z.iso.datetime().nullable(),
     ciphertext: z.string().nullable(),
     nonce: z.string().nullable(),
     ephemeralPublicKey: z.string().nullable(),
@@ -84,6 +95,7 @@ export const messageSchema = z
 
 const chatResponse = successEnvelope(chatSchema, 'ChatResponse');
 const chatListResponse = successEnvelope(z.array(chatSchema), 'ChatListResponse');
+const readWatermarkResponse = successEnvelope(readWatermarkSchema, 'ReadWatermarkResponse');
 const messageResponse = successEnvelope(messageSchema, 'MessageResponse');
 const messageListResponse = successEnvelope(z.array(messageSchema), 'MessageListResponse');
 
@@ -243,6 +255,19 @@ export const messageContracts = {
     request: { params: messageParamsSchema, body: forwardMessageSchema },
     responses: {
       201: { description: 'The forwarded copy', schema: messageResponse },
+      ...commonErrorResponses,
+    },
+  },
+  markRead: {
+    operationId: 'chats.markRead',
+    tags: ['Chats'],
+    summary: 'Advance the caller read watermark for a chat',
+    description:
+      'Marks a chat read up to the supplied message id, or to the newest message when omitted. The watermark never moves backwards. Marking is explicit; listing history does not change read state. Works for direct and secret chats; secret chat ciphertext is never read or modified.',
+    security: bearerSecurity,
+    request: { params: chatParamsSchema, body: markReadSchema },
+    responses: {
+      200: { description: 'The updated read watermark', schema: readWatermarkResponse },
       ...commonErrorResponses,
     },
   },
