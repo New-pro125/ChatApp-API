@@ -166,6 +166,9 @@ constructor-injected with `MessagingPolicy`, `MessageRepository`,
   load the messages with `messages.listByIds(chatId, ids)`; return an ordered
   array of `{ message, pinnedAt }` for messages that still exist, preserving
   `pinned_at DESC` order.
+- `listPinnedFor(chatId, viewerId, messageIds)`: thin passthrough to the
+  repository's batched lookup so the web layer never imports a data-layer port.
+  The controller calls this only after history loading has validated membership.
 
 Add `MESSAGES_TYPES.MessagePinRepository` and `MESSAGES_TYPES.PinService`, bind
 both in `MessagesContainer` in singleton scope, and add the new controller and
