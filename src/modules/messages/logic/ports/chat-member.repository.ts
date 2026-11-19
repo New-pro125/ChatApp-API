@@ -16,4 +16,10 @@ export interface ChatMemberRepository {
 
   /** Returns whether a membership row was removed. */
   remove(chatId: string, userId: string): Promise<boolean>;
+
+  /**
+   * Advances the read watermark only when `messageId` is newer than the stored
+   * id. Returns the current membership row, including on a stale no-op.
+   */
+  markRead(chatId: string, userId: string, messageId: string): Promise<ChatMemberRecord>;
 }

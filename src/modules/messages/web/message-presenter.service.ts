@@ -2,12 +2,16 @@ import { inject, injectable } from 'inversify';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import type { MediaAccess } from '@/core/media/media-access.port.js';
 import type { MessageRecord } from '@/modules/messages/logic/entities/message-record.js';
+import type { ReadReceiptContext } from '@/modules/messages/logic/entities/read-receipt-context.js';
 
 @injectable()
 export class MessagePresenter {
   constructor(@inject(CORE_TYPES.MediaAccess) private readonly media: MediaAccess) {}
 
-  async present(message: MessageRecord): Promise<Record<string, unknown>> {
+  async present(
+    message: MessageRecord,
+    receipts?: ReadReceiptContext,
+  ): Promise<Record<string, unknown>> {
     const base = {
       id: message.id,
       chatId: message.chatId,
@@ -20,6 +24,7 @@ export class MessagePresenter {
       editedAt: message.editedAt?.toISOString() ?? null,
       deletedAt: message.deletedAt?.toISOString() ?? null,
       createdAt: message.createdAt.toISOString(),
+      readAt: this.readAt(message, receipts),
       ciphertext: message.ciphertext,
       nonce: message.nonce,
       ephemeralPublicKey: message.ephemeralPublicKey,
@@ -49,5 +54,20 @@ export class MessagePresenter {
         expiresAt: download.expiresAt.toISOString(),
       },
     };
+  }
+
+  private readAt(message: MessageRecord, receipts?: ReadReceiptContext): string | null {
+    if (
+      receipts === undefined ||
+      !receipts.mutual ||
+      message.senderId !== receipts.viewerId ||
+      message.deletedAt !== null ||
+      receipts.peerLastReadMessageId === null ||
+      message.id > receipts.peerLastReadMessageId
+    ) {
+      return null;
+    }
+
+    return receipts.peerLastReadAt?.toISOString() ?? null;
   }
 }

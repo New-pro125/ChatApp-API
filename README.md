@@ -278,6 +278,7 @@ use the shared `rl:messages:` bucket (120 requests per 15 minutes).
 | -------- | ------------------------------------------------ | ------------------------------------------- |
 | `POST`   | `/api/chats`                                     | Open (or retrieve) a direct chat            |
 | `GET`    | `/api/chats`                                     | List the caller's chats, most active first  |
+| `POST`   | `/api/chats/:chatId/read`                        | Advance the caller's read watermark         |
 | `POST`   | `/api/chats/:chatId/messages`                    | Send a text message                         |
 | `GET`    | `/api/chats/:chatId/messages`                    | List history with keyset pagination         |
 | `PATCH`  | `/api/chats/:chatId/messages/:messageId`         | Edit an owned message                       |
@@ -306,6 +307,26 @@ the body into a target chat the caller belongs to and records
 NOT_CHAT_MEMBER` on every chat-scoped operation. Sending and forwarding bump the
 chat's `updated_at`, so a newly active conversation moves to the top of
 `GET /api/chats`.
+
+### Read receipts
+
+Reading is explicit: `POST /api/chats/:chatId/read` accepts an optional
+`{ "messageId": "<uuid>" }` and advances the caller's watermark up to that
+message, or to the newest message when omitted. A watermark never moves
+backwards, and a `messageId` from another chat returns `404 NOT_FOUND`.
+`GET /api/chats/:chatId/messages` never changes read state. Read state is stored
+per membership as `last_read_message_id` plus a database-generated
+`last_read_at`; it is metadata only and works in secret chats without reading
+their ciphertext.
+
+Chat rows include `unreadCount`, the number of live incoming messages newer
+than the caller's watermark. This count is caller-private and is always
+available. Message rows include `readAt`, populated with the peer's watermark
+timestamp only for a message the viewer sent, only when it is at or below the
+peer's watermark, and only when **both** peers have
+`readReceiptsEnabled = true`. If either peer disables it, `readAt` is `null` in
+both directions, while each peer's own unread counts keep working. `readAt` is
+also `null` for deleted messages and for incoming messages.
 
 ### Media messages
 

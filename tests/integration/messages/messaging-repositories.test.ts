@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UniqueConstraintException } from '@/core/errors/repository.error.js';
 import type { ChatRepository } from '@/modules/messages/logic/ports/chat.repository.js';
 import type { ChatMemberRepository } from '@/modules/messages/logic/ports/chat-member.repository.js';
@@ -298,5 +298,122 @@ describe('Messaging repositories', () => {
     expect(await messages.findById(chatId, message.id)).toBeNull();
     expect(await members.listByChat(chatId)).toEqual([]);
     expect(await chats.delete(chatId)).toBe(false);
+  });
+
+  it('returns null read watermarks for a fresh membership', async () => {
+    const owner = await auth.createUser();
+    const chatId = await createGroupChat(owner.id);
+
+    const membership = await members.find(chatId, owner.id);
+
+    expect(membership?.lastReadMessageId).toBeNull();
+    expect(membership?.lastReadAt).toBeNull();
+  });
+
+  it('marks read monotonically and counts only newer live inbound messages', async () => {
+    const alice = await auth.createUser();
+    const bob = await auth.createUser();
+    const chat = await chats.create({
+      type: 'direct',
+      title: null,
+      directKey: [alice.id, bob.id].sort().join(':'),
+      createdBy: alice.id,
+    });
+    await members.add(chat.id, alice.id);
+    await members.add(chat.id, bob.id);
+
+    const first = await messages.create({ chatId: chat.id, senderId: bob.id, body: 'one' });
+    const second = await messages.create({ chatId: chat.id, senderId: bob.id, body: 'two' });
+
+    // uuidv7 ordering is the pagination and watermark ordering invariant.
+    expect(second.id > first.id).toBe(true);
+
+    const afterFirst = await members.markRead(chat.id, alice.id, first.id);
+    expect(afterFirst.lastReadMessageId).toBe(first.id);
+    expect(afterFirst.lastReadAt).toBeInstanceOf(Date);
+
+    const afterStale = await members.markRead(chat.id, alice.id, first.id);
+    expect(afterStale.lastReadMessageId).toBe(first.id);
+    expect(afterStale.lastReadAt?.getTime()).toBe(afterFirst.lastReadAt?.getTime());
+
+    await members.markRead(chat.id, alice.id, second.id);
+    expect(await messages.countUnread(chat.id, alice.id, first.id)).toBe(1);
+    expect(await messages.countUnread(chat.id, alice.id, second.id)).toBe(0);
+    expect(await messages.maxIdByChat(chat.id)).toBe(second.id);
+  });
+
+  it('ignores own and soft-deleted messages when counting unread', async () => {
+    const alice = await auth.createUser();
+    const bob = await auth.createUser();
+    const chat = await chats.create({
+      type: 'direct',
+      title: null,
+      directKey: [alice.id, bob.id].sort().join(':'),
+      createdBy: alice.id,
+    });
+    await members.add(chat.id, alice.id);
+    await members.add(chat.id, bob.id);
+
+    await messages.create({ chatId: chat.id, senderId: alice.id, body: 'mine' });
+    const inbound = await messages.create({ chatId: chat.id, senderId: bob.id, body: 'theirs' });
+    expect(await messages.countUnread(chat.id, alice.id, null)).toBe(1);
+
+    await messages.markDeleted(chat.id, inbound.id, new Date());
+    // A deleted message may still be a legitimate watermark target.
+    const marked = await members.markRead(chat.id, alice.id, inbound.id);
+    expect(marked.lastReadMessageId).toBe(inbound.id);
+    expect(await messages.countUnread(chat.id, alice.id, null)).toBe(0);
+    expect(await messages.countUnread(chat.id, alice.id, inbound.id)).toBe(0);
+  });
+
+  it('counts unread for several chats in one query', async () => {
+    const alice = await auth.createUser();
+    const bob = await auth.createUser();
+    const charlie = await auth.createUser();
+    const firstChat = await createGroupChat(alice.id);
+    const secondChat = await createGroupChat(alice.id);
+    const emptyChatId = await createGroupChat(alice.id);
+    await members.add(firstChat, bob.id);
+    await members.add(secondChat, charlie.id);
+    await messages.create({ chatId: firstChat, senderId: bob.id, body: 'first' });
+    await messages.create({ chatId: secondChat, senderId: charlie.id, body: 'second' });
+
+    const selectSpy = vi.spyOn(app.db, 'select');
+    const counts = await messages.countUnreadByChats(alice.id, [
+      firstChat,
+      secondChat,
+      emptyChatId,
+    ]);
+    const queryCount = selectSpy.mock.calls.length;
+    selectSpy.mockRestore();
+
+    expect(queryCount).toBe(1);
+    expect(counts.get(firstChat)).toBe(1);
+    expect(counts.get(secondChat)).toBe(1);
+    expect(counts.has(emptyChatId)).toBe(false);
+  });
+
+  it('never rewinds the watermark when stale marks race', async () => {
+    const alice = await auth.createUser();
+    const bob = await auth.createUser();
+    const chat = await chats.create({
+      type: 'direct',
+      title: null,
+      directKey: [alice.id, bob.id].sort().join(':'),
+      createdBy: alice.id,
+    });
+    await members.add(chat.id, alice.id);
+    await members.add(chat.id, bob.id);
+    const first = await messages.create({ chatId: chat.id, senderId: bob.id, body: 'one' });
+    const second = await messages.create({ chatId: chat.id, senderId: bob.id, body: 'two' });
+
+    await Promise.all([
+      members.markRead(chat.id, alice.id, second.id),
+      members.markRead(chat.id, alice.id, first.id),
+      members.markRead(chat.id, alice.id, second.id),
+    ]);
+
+    const current = await members.find(chat.id, alice.id);
+    expect(current?.lastReadMessageId).toBe(second.id);
   });
 });

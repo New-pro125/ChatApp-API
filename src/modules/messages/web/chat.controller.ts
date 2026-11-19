@@ -5,13 +5,19 @@ import { UnauthorizedException } from '@/core/errors/http.error.js';
 import type { ApiResponse } from '@/core/http/response/api-response.js';
 import type { ChatService } from '@/modules/messages/logic/chat.service.js';
 import type { ChatView } from '@/modules/messages/logic/entities/chat-view.js';
+import type { ReadReceiptService } from '@/modules/messages/logic/read-receipt.service.js';
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
-import { openDirectChatSchema } from '@/modules/messages/web/dto/message.schemas.js';
+import {
+  chatParamsSchema,
+  markReadSchema,
+  openDirectChatSchema,
+} from '@/modules/messages/web/dto/message.schemas.js';
 
 @injectable()
 export class ChatController {
   constructor(
     @inject(MESSAGES_TYPES.ChatService) private readonly chats: ChatService,
+    @inject(MESSAGES_TYPES.ReadReceiptService) private readonly receipts: ReadReceiptService,
     @inject(CORE_TYPES.ApiResponse) private readonly response: ApiResponse,
   ) {}
 
@@ -53,6 +59,15 @@ export class ChatController {
     );
   };
 
+  markRead: RequestHandler = async (req, res) => {
+    const user = this.requireUser(req);
+    const { chatId } = chatParamsSchema.parse(req.params);
+    const { messageId } = markReadSchema.parse(req.body ?? {});
+    const result = await this.receipts.markRead(user.id, chatId, messageId);
+
+    this.response.ok(res, result);
+  };
+
   private requireUser(req: Request): Express.User {
     if (!req.isAuthenticated()) {
       throw new UnauthorizedException();
@@ -66,6 +81,7 @@ export class ChatController {
       id: chat.id,
       type: chat.type,
       title: chat.title,
+      unreadCount: chat.unreadCount,
       participants: chat.participants.map((participant) => ({
         userId: participant.id,
         username: participant.username,

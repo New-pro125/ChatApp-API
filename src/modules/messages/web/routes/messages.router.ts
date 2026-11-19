@@ -59,6 +59,16 @@ export class MessagesRouter {
     );
 
     routes.post(
+      '/:chatId/read',
+      messageContracts.markRead,
+      this.requireAuth.handle,
+      this.requireVerifiedEmail.handle,
+      this.limiter.handle,
+      (req, res, next) =>
+        req.container.get<ChatController>(MESSAGES_TYPES.ChatController).markRead(req, res, next),
+    );
+
+    routes.post(
       '/:chatId/secret-messages',
       messageContracts.sendSecretMessage,
       this.requireAuth.handle,
