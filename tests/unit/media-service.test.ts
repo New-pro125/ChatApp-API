@@ -10,6 +10,7 @@ import {
   MediaScanUnavailableException,
 } from '@/core/errors/domain.error.js';
 import { ObjectStoreException, VirusScannerException } from '@/core/errors/repository.error.js';
+import type { MediaReferenceReader } from '@/core/media/media-reference.port.js';
 import { MediaObjectRecord } from '@/modules/media/logic/entities/media-object-record.js';
 import { MediaService } from '@/modules/media/logic/media.service.js';
 import type { MediaObjectRepository } from '@/modules/media/logic/ports/media-object.repository.js';
@@ -52,6 +53,10 @@ class FakeRepository implements MediaObjectRepository {
   }
 
   findOwned(): Promise<MediaObjectRecord | null> {
+    return Promise.resolve(this.record);
+  }
+
+  findById(): Promise<MediaObjectRecord | null> {
     return Promise.resolve(this.record);
   }
 
@@ -226,6 +231,13 @@ const config = (scanRequired = true): AppConfig =>
     },
   }) as unknown as AppConfig;
 
+class FakeReferences implements MediaReferenceReader {
+  live = false;
+  hasLiveReferences(): Promise<boolean> {
+    return Promise.resolve(this.live);
+  }
+}
+
 describe('MediaService', () => {
   let objects: FakeRepository;
   let store: FakeStore;
@@ -236,7 +248,7 @@ describe('MediaService', () => {
     objects = new FakeRepository();
     store = new FakeStore();
     scanner = new FakeScanner();
-    service = new MediaService(objects, store, scanner, config());
+    service = new MediaService(objects, store, scanner, config(), new FakeReferences());
   });
 
   it('rejects a type outside the allowlist or a size outside the cap', async () => {
@@ -311,7 +323,7 @@ describe('MediaService', () => {
 
   it('skips scanning only when configuration explicitly disables it', async () => {
     objects.seed();
-    const bypass = new MediaService(objects, store, scanner, config(false));
+    const bypass = new MediaService(objects, store, scanner, config(false), new FakeReferences());
     const result = await bypass.finalize(OWNER, ID);
     expect(result.status).toBe('ready');
     expect(result.sha256).toBeNull();

@@ -6,6 +6,7 @@ import { PostgresMediaObjectRepository } from '@/modules/media/data/postgres-med
 import { S3ObjectStore } from '@/modules/media/data/s3-object.store.js';
 import { ClamAvProtocol } from '@/modules/media/logic/clamav-protocol.js';
 import { MediaService } from '@/modules/media/logic/media.service.js';
+import { MediaAccessService } from '@/modules/media/logic/media-access.service.js';
 import { MediaObjectKeyFactory } from '@/modules/media/logic/media-object-key.factory.js';
 import { MediaPresignOptions } from '@/modules/media/logic/media-presign.options.js';
 import type { MediaObjectRepository } from '@/modules/media/logic/ports/media-object.repository.js';
@@ -16,8 +17,8 @@ import { MediaController } from '@/modules/media/web/media.controller.js';
 import { MediaRouter } from '@/modules/media/web/routes/media.router.js';
 
 export class MediaContainer extends Container {
-  constructor(parent: Container) {
-    super({ parent });
+  constructor(root: Container) {
+    super({ parent: root });
 
     this.bind<RequestScopeMiddleware>(MEDIA_TYPES.RequestScope).toConstantValue(
       new RequestScopeMiddleware(this),
@@ -38,6 +39,9 @@ export class MediaContainer extends Container {
     this.bind<ObjectStore>(MEDIA_TYPES.ObjectStore).to(S3ObjectStore).inSingletonScope();
     this.bind<VirusScanner>(MEDIA_TYPES.VirusScanner).to(ClamAvVirusScanner).inSingletonScope();
     this.bind<MediaService>(MEDIA_TYPES.MediaService).to(MediaService).inSingletonScope();
+    this.bind<MediaAccessService>(MEDIA_TYPES.MediaAccessService)
+      .to(MediaAccessService)
+      .inSingletonScope();
 
     this.bind<MediaController>(MEDIA_TYPES.MediaController).to(MediaController);
     this.bind<MediaRouter>(MEDIA_TYPES.MediaRouter).to(MediaRouter).inSingletonScope();

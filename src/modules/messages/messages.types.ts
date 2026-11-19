@@ -8,6 +8,7 @@ export const MESSAGES_TYPES = {
   MessagingPolicy: Symbol.for('Messages.MessagingPolicy'),
   ChatService: Symbol.for('Messages.ChatService'),
   MessageService: Symbol.for('Messages.MessageService'),
+  MediaReferenceReader: Symbol.for('Messages.MediaReferenceReader'),
   ChatController: Symbol.for('Messages.ChatController'),
   MessageController: Symbol.for('Messages.MessageController'),
   MessagesRouter: Symbol.for('Messages.MessagesRouter'),

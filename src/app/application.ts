@@ -92,9 +92,9 @@ export class Application {
       new HealthModule(container),
       new AuthModule(container, config),
       new StoriesModule(container),
-      new MediaModule(container),
       new E2eeModule(container),
       new MessagesModule(container),
+      new MediaModule(container),
     ];
 
     if (config.docsEnabled) {

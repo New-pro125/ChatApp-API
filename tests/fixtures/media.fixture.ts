@@ -1,6 +1,7 @@
 import type { Readable } from 'node:stream';
 import { DeleteObjectsCommand, ListObjectVersionsCommand, S3Client } from '@aws-sdk/client-s3';
 import { VirusScannerException } from '@/core/errors/repository.error.js';
+import type { MediaReferenceReader } from '@/core/media/media-reference.port.js';
 import { MediaService } from '@/modules/media/logic/media.service.js';
 import type { ObjectStore } from '@/modules/media/logic/ports/object-store.js';
 import type { ScanResult, VirusScanner } from '@/modules/media/logic/ports/virus-scanner.js';
@@ -44,6 +45,12 @@ export class FakeVirusScanner implements VirusScanner {
     }
 
     return { verdict: 'clean' };
+  }
+}
+
+class FakeReferences implements MediaReferenceReader {
+  hasLiveReferences(): Promise<boolean> {
+    return Promise.resolve(false);
   }
 }
 
@@ -117,6 +124,7 @@ export class MediaFixture {
           module.mediaContainer.get(MEDIA_TYPES.ObjectStore),
           module.mediaContainer.get(MEDIA_TYPES.VirusScanner),
           bypassConfig,
+          new FakeReferences(),
         ),
       );
   }

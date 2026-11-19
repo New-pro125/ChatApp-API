@@ -7,6 +7,7 @@ export const MEDIA_TYPES = {
   ClamAvProtocol: Symbol.for('Media.ClamAvProtocol'),
   MediaRateLimiter: Symbol.for('Media.MediaRateLimiter'),
   MediaService: Symbol.for('Media.MediaService'),
+  MediaAccessService: Symbol.for('Media.MediaAccessService'),
   MediaController: Symbol.for('Media.MediaController'),
   MediaRouter: Symbol.for('Media.MediaRouter'),
   RequestScope: Symbol.for('Media.RequestScope'),
