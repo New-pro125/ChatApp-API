@@ -10,6 +10,7 @@ export const MESSAGES_TYPES = {
   ReadReceiptService: Symbol.for('Messages.ReadReceiptService'),
   ChatService: Symbol.for('Messages.ChatService'),
   MessageService: Symbol.for('Messages.MessageService'),
+  PinService: Symbol.for('Messages.PinService'),
   MediaKindPolicy: Symbol.for('Messages.MediaKindPolicy'),
   MediaReferenceReader: Symbol.for('Messages.MediaReferenceReader'),
   ChatController: Symbol.for('Messages.ChatController'),
