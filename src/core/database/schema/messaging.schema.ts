@@ -105,7 +105,10 @@ export const messagePins = pgTable(
     pinnedAt: timestamp('pinned_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    primaryKey({ columns: [table.chatId, table.userId, table.messageId], name: 'message_pins_pkey' }),
+    primaryKey({
+      columns: [table.chatId, table.userId, table.messageId],
+      name: 'message_pins_pkey',
+    }),
     index('message_pins_chat_user_pinned_at_index').on(
       table.chatId,
       table.userId,
