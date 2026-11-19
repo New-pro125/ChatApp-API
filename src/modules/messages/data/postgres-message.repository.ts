@@ -1,8 +1,8 @@
-import { and, desc, eq, isNull, lt } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { inject, injectable } from 'inversify';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import type { AppDatabase } from '@/core/database/database.provider.js';
-import { chats, messages } from '@/core/database/schema/index.js';
+import { chatMembers, chats, messages } from '@/core/database/schema/index.js';
 import { PersistenceException } from '@/core/errors/repository.error.js';
 import { MessageMapper, messageSelection } from '@/modules/messages/data/message.mapper.js';
 import type { MessageRecord } from '@/modules/messages/logic/entities/message-record.js';
@@ -181,6 +181,79 @@ export class PostgresMessageRepository implements MessageRepository {
       return rows.length > 0;
     } catch (error) {
       throw new PersistenceException('Failed to delete message', { cause: error });
+    }
+  }
+
+  async maxIdByChat(chatId: string): Promise<string | null> {
+    try {
+      const rows = await this.db
+        .select({ id: messages.id })
+        .from(messages)
+        .where(eq(messages.chatId, chatId))
+        .orderBy(desc(messages.id))
+        .limit(1);
+
+      return rows[0]?.id ?? null;
+    } catch (error) {
+      throw new PersistenceException('Failed to find the latest message', { cause: error });
+    }
+  }
+
+  async countUnread(chatId: string, readerId: string, watermarkId: string | null): Promise<number> {
+    try {
+      const conditions = [
+        eq(messages.chatId, chatId),
+        ne(messages.senderId, readerId),
+        isNull(messages.deletedAt),
+      ];
+
+      if (watermarkId !== null) {
+        conditions.push(gt(messages.id, watermarkId));
+      }
+
+      const rows = await this.db
+        .select({ value: sql<number>`count(*)::int` })
+        .from(messages)
+        .where(and(...conditions));
+
+      return rows[0]?.value ?? 0;
+    } catch (error) {
+      throw new PersistenceException('Failed to count unread messages', { cause: error });
+    }
+  }
+
+  async countUnreadByChats(
+    readerId: string,
+    chatIds: readonly string[],
+  ): Promise<Map<string, number>> {
+    if (chatIds.length === 0) {
+      return new Map();
+    }
+
+    try {
+      const rows = await this.db
+        .select({ chatId: messages.chatId, value: sql<number>`count(*)::int` })
+        .from(messages)
+        .innerJoin(
+          chatMembers,
+          and(eq(chatMembers.chatId, messages.chatId), eq(chatMembers.userId, readerId)),
+        )
+        .where(
+          and(
+            inArray(messages.chatId, [...chatIds]),
+            ne(messages.senderId, readerId),
+            isNull(messages.deletedAt),
+            or(
+              isNull(chatMembers.lastReadMessageId),
+              gt(messages.id, chatMembers.lastReadMessageId),
+            ),
+          ),
+        )
+        .groupBy(messages.chatId);
+
+      return new Map(rows.map((row) => [row.chatId, row.value]));
+    } catch (error) {
+      throw new PersistenceException('Failed to count unread chats', { cause: error });
     }
   }
 
