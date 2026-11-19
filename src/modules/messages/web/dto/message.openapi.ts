@@ -70,6 +70,7 @@ export const messageSchema = z
     editedAt: z.iso.datetime().nullable(),
     deletedAt: z.iso.datetime().nullable(),
     createdAt: z.iso.datetime(),
+    readAt: z.iso.datetime().nullable(),
     ciphertext: z.string().nullable(),
     nonce: z.string().nullable(),
     ephemeralPublicKey: z.string().nullable(),

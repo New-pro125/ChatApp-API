@@ -211,4 +211,69 @@ describe('Read receipts', () => {
     expect(chats.find((chat) => chat.id === secretChatId)?.unreadCount).toBe(1);
     expect(chats.find((chat) => chat.id === emptyChatId)?.unreadCount).toBe(0);
   });
+
+  it('shows readAt only to the sender, only for read messages, and only when mutual', async () => {
+    const { alice, bob, chatId } = await createPair();
+    const first = await send(bob.headers, chatId, 'one');
+    const firstId = first.body.data.id as string;
+    const second = await send(bob.headers, chatId, 'two');
+    const secondId = second.body.data.id as string;
+    const own = await send(alice.headers, chatId, 'mine');
+    const ownId = own.body.data.id as string;
+
+    await markRead(alice.headers, chatId, { messageId: firstId });
+    await markRead(bob.headers, chatId, { messageId: ownId });
+
+    async function readAtFor(headers: Record<string, string>) {
+      const messages = expectSuccess<Array<{ id: string; readAt: string | null }>>(
+        await app.request.get(`/api/chats/${chatId}/messages`).set(headers),
+        200,
+      );
+      return new Map(messages.map((message) => [message.id, message.readAt]));
+    }
+
+    const forBob = await readAtFor(bob.headers);
+    expect(forBob.get(firstId)).not.toBeNull();
+    expect(forBob.get(secondId)).toBeNull();
+    expect(forBob.get(ownId)).toBeNull();
+
+    const forAlice = await readAtFor(alice.headers);
+    expect(forAlice.get(ownId)).not.toBeNull();
+    expect(forAlice.get(firstId)).toBeNull();
+
+    await app.request
+      .patch('/api/auth/me/privacy')
+      .set(bob.headers)
+      .send({ readReceiptsEnabled: false });
+
+    const hidden = await readAtFor(bob.headers);
+    expect(hidden.get(firstId)).toBeNull();
+
+    await app.request
+      .patch('/api/auth/me/privacy')
+      .set(bob.headers)
+      .send({ readReceiptsEnabled: true });
+
+    const visibleAgain = await readAtFor(bob.headers);
+    expect(visibleAgain.get(firstId)).not.toBeNull();
+  });
+
+  it('suppresses readAt on soft-deleted messages', async () => {
+    const { alice, bob, chatId } = await createPair();
+    const message = await send(bob.headers, chatId, 'delete me');
+    const messageId = message.body.data.id as string;
+    await markRead(alice.headers, chatId, { messageId });
+
+    const deleted = await app.request
+      .delete(`/api/chats/${chatId}/messages/${messageId}`)
+      .set(bob.headers);
+    expect(deleted.status).toBe(204);
+
+    const messages = expectSuccess<
+      Array<{ id: string; readAt: string | null; deletedAt: string | null }>
+    >(await app.request.get(`/api/chats/${chatId}/messages`).set(bob.headers), 200);
+    const tombstone = messages.find((item) => item.id === messageId);
+    expect(tombstone?.deletedAt).not.toBeNull();
+    expect(tombstone?.readAt).toBeNull();
+  });
 });
