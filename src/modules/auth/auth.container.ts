@@ -7,6 +7,7 @@ import type { AppConfig } from '@/core/config/app.config.js';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import { AuthRateLimiter, ProfileRateLimiter } from '@/core/http/middleware/rate-limit.js';
 import { RequestScopeMiddleware } from '@/core/http/middleware/request-scope.js';
+import type { ReadReceiptPreferenceReader } from '@/core/privacy/read-receipt-preference.reader.js';
 import type { UserBlockReader } from '@/core/privacy/user-block.reader.js';
 import type { UserPrivacyReader } from '@/core/privacy/user-privacy.reader.js';
 import type { UserSummaryReader } from '@/core/users/user-summary.reader.js';
@@ -53,6 +54,7 @@ import type { UserBlockRepository } from '@/modules/auth/logic/ports/user-block.
 import type { UserPrivacyRepository } from '@/modules/auth/logic/ports/user-privacy.repository.js';
 import { PrivacyService } from '@/modules/auth/logic/privacy.service.js';
 import { ProfileService } from '@/modules/auth/logic/profile.service.js';
+import { ReadReceiptPreferenceService } from '@/modules/auth/logic/read-receipt-preference.service.js';
 import { TokenService } from '@/modules/auth/logic/token.service.js';
 import { TotpService } from '@/modules/auth/logic/totp.service.js';
 import { AuthController } from '@/modules/auth/web/auth.controller.js';
@@ -110,6 +112,9 @@ export class AuthContainer extends Container {
       .inSingletonScope();
     this.bind<UserPrivacyRepository>(AUTH_TYPES.UserPrivacyRepository)
       .to(PostgresUserPrivacyRepository)
+      .inSingletonScope();
+    this.bind<ReadReceiptPreferenceService>(AUTH_TYPES.ReadReceiptPreferenceService)
+      .to(ReadReceiptPreferenceService)
       .inSingletonScope();
     this.bind<UserBlockRepository>(AUTH_TYPES.UserBlockRepository)
       .to(PostgresUserBlockRepository)
@@ -256,11 +261,17 @@ export class AuthContainer extends Container {
     );
     const privacyReader = this.get<PrivacyService>(AUTH_TYPES.PrivacyService);
     const blockReader = this.get<BlockService>(AUTH_TYPES.BlockService);
+    const receiptReader = this.get<ReadReceiptPreferenceService>(
+      AUTH_TYPES.ReadReceiptPreferenceService,
+    );
     const summaryReader = this.get<UserRepository>(AUTH_TYPES.UserRepository);
 
     this.root.bind<PrincipalStore>(CORE_TYPES.PrincipalStore).toConstantValue(principalStore);
     this.root.bind<UserPrivacyReader>(CORE_TYPES.UserPrivacyReader).toConstantValue(privacyReader);
     this.root.bind<UserBlockReader>(CORE_TYPES.UserBlockReader).toConstantValue(blockReader);
+    this.root
+      .bind<ReadReceiptPreferenceReader>(CORE_TYPES.ReadReceiptPreferenceReader)
+      .toConstantValue(receiptReader);
     this.root.bind<UserSummaryReader>(CORE_TYPES.UserSummaryReader).toConstantValue(summaryReader);
     this.root.bind<RequireBearerAuthMiddleware>(CORE_TYPES.RequireAuth).toConstantValue(middleware);
     this.root

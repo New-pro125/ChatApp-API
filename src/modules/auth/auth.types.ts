@@ -6,6 +6,7 @@ export const AUTH_TYPES = {
   MfaRepository: Symbol.for('Auth.MfaRepository'),
   RefreshTokenRepository: Symbol.for('Auth.RefreshTokenRepository'),
   UserPrivacyRepository: Symbol.for('Auth.UserPrivacyRepository'),
+  ReadReceiptPreferenceService: Symbol.for('Auth.ReadReceiptPreferenceService'),
   UserBlockRepository: Symbol.for('Auth.UserBlockRepository'),
   OAuthGrantStore: Symbol.for('Auth.OAuthGrantStore'),
   OAuthStateStore: Symbol.for('Auth.OAuthStateStore'),
