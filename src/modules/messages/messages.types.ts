@@ -4,6 +4,7 @@ export const MESSAGES_TYPES = {
   MessageRepository: Symbol.for('Messages.MessageRepository'),
   MessagePinRepository: Symbol.for('Messages.MessagePinRepository'),
   MessageDraftRepository: Symbol.for('Messages.MessageDraftRepository'),
+  MessageMentionRepository: Symbol.for('Messages.MessageMentionRepository'),
 
   RequestScope: Symbol.for('Messages.RequestScope'),
   MessagesRateLimiter: Symbol.for('Messages.MessagesRateLimiter'),
