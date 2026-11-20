@@ -8,6 +8,13 @@ export { combinedMediaFieldsSchema, mediaKindSchema } from '@/core/media/media-f
 /** A text body. The database check constraint allows 1–4096 characters. */
 export const messageBodySchema = z.string().min(1).max(4096);
 
+/** Body for an unsent draft. Trimming rejects whitespace-only drafts. */
+export const saveDraftSchema = z.object({
+  body: z.string().trim().min(1).max(4096),
+});
+
+export type SaveDraftSchema = z.infer<typeof saveDraftSchema>;
+
 /** Body for opening (or retrieving) a direct chat with another user. */
 export const openDirectChatSchema = z.object({
   participantId: z.uuid(),

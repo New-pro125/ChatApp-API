@@ -280,6 +280,9 @@ use the shared `rl:messages:` bucket (120 requests per 15 minutes).
 | `GET`    | `/api/chats`                                     | List the caller's chats, most active first  |
 | `POST`   | `/api/chats/:chatId/read`                        | Advance the caller's read watermark         |
 | `PATCH`  | `/api/chats/:chatId/self-destruct`               | Set or clear the caller's timer preset      |
+| `PUT`    | `/api/chats/:chatId/draft`                       | Save the caller's unsent text draft         |
+| `GET`    | `/api/chats/:chatId/draft`                       | Read the caller's draft (or `null`)         |
+| `DELETE` | `/api/chats/:chatId/draft`                       | Clear the caller's draft (idempotent)       |
 | `POST`   | `/api/chats/:chatId/messages/:messageId/pin`     | Pin a message for a chosen duration         |
 | `DELETE` | `/api/chats/:chatId/messages/:messageId/pin`     | Remove the caller's pin (idempotent)        |
 | `GET`    | `/api/chats/:chatId/pins`                        | List the caller's pinned messages           |
@@ -372,6 +375,19 @@ repeatable job physically scrubs them every
 content and ciphertext are cleared, media columns are cleared, and the media object is
 deleted only after the last live reference expires. A worker or Redis outage only delays
 storage cleanup; it never makes an elapsed message visible again.
+
+### Message drafts
+
+`PUT /api/chats/:chatId/draft` accepts `{ "body": "..." }` with a trimmed body of 1–4096
+characters and saves one private draft per chat and caller. Saving again overwrites the body
+and refreshes `updatedAt`, so the latest save from any device wins. `GET` returns
+`{ "body": "...", "updatedAt": "..." }` or `data: null` when no draft exists; `DELETE` is
+idempotent and returns `204`.
+
+Drafts are visible only to their author and never appear in chat lists, message history, or
+unread counts. Secret chats return `403 E2EE_NOT_ALLOWED` so their plaintext never reaches
+the server. A successful cloud message send in that chat clears the caller's draft (text,
+media, upload, or forward), while the peer's draft is untouched.
 
 ### Media messages
 

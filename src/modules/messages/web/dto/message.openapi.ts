@@ -17,6 +17,7 @@ import {
   messageParamsSchema,
   openDirectChatSchema,
   pinMessageSchema,
+  saveDraftSchema,
   selfDestructPresetSchema,
   sendMediaMessageSchema,
   sendMessageSchema,
@@ -119,6 +120,16 @@ const selfDestructResponse = successEnvelope(
   z.object({ preset: selfDestructPresetSchema.nullable() }),
   'SelfDestructSettingResponse',
 );
+
+export const draftSchema = z
+  .object({
+    body: z.string(),
+    updatedAt: z.iso.datetime(),
+  })
+  .meta({ id: 'MessageDraft' });
+
+const draftResponse = successEnvelope(draftSchema, 'MessageDraftResponse');
+const draftOrNullResponse = successEnvelope(draftSchema.nullable(), 'MessageDraftLookupResponse');
 
 /**
  * OpenAPI contracts for one-on-one messaging.
@@ -341,6 +352,44 @@ export const messageContracts = {
     request: { params: chatParamsSchema, body: setSelfDestructSchema },
     responses: {
       200: { description: 'The updated caller setting', schema: selfDestructResponse },
+      ...commonErrorResponses,
+    },
+  },
+  saveDraft: {
+    operationId: 'chats.saveDraft',
+    tags: ['Chats'],
+    summary: "Save the caller's unsent text draft for a chat",
+    description:
+      'Stores one private draft per chat and caller. Saving again overwrites the body and refreshes updatedAt (last write wins). Direct cloud chats only; secret chats return 403 E2EE_NOT_ALLOWED.',
+    security: bearerSecurity,
+    request: { params: chatParamsSchema, body: saveDraftSchema },
+    responses: {
+      200: { description: 'The saved draft', schema: draftResponse },
+      ...commonErrorResponses,
+    },
+  },
+  getDraft: {
+    operationId: 'chats.getDraft',
+    tags: ['Chats'],
+    summary: "Read the caller's unsent text draft for a chat",
+    description:
+      'Returns the caller own draft for this chat, or data: null when none exists. The peer draft is never returned.',
+    security: bearerSecurity,
+    request: { params: chatParamsSchema },
+    responses: {
+      200: { description: 'The draft, or null', schema: draftOrNullResponse },
+      ...commonErrorResponses,
+    },
+  },
+  deleteDraft: {
+    operationId: 'chats.deleteDraft',
+    tags: ['Chats'],
+    summary: "Clear the caller's unsent text draft for a chat",
+    description: 'Idempotent: clearing a chat with no draft still returns 204.',
+    security: bearerSecurity,
+    request: { params: chatParamsSchema },
+    responses: {
+      204: noContentResponse,
       ...commonErrorResponses,
     },
   },

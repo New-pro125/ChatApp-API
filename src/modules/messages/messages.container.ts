@@ -6,8 +6,10 @@ import type { MediaReferenceReader } from '@/core/media/media-reference.port.js'
 import { PostgresChatRepository } from '@/modules/messages/data/postgres-chat.repository.js';
 import { PostgresChatMemberRepository } from '@/modules/messages/data/postgres-chat-member.repository.js';
 import { PostgresMessageRepository } from '@/modules/messages/data/postgres-message.repository.js';
+import { PostgresMessageDraftRepository } from '@/modules/messages/data/postgres-message-draft.repository.js';
 import { PostgresMessagePinRepository } from '@/modules/messages/data/postgres-message-pin.repository.js';
 import { ChatService } from '@/modules/messages/logic/chat.service.js';
+import { DraftService } from '@/modules/messages/logic/draft.service.js';
 import { MediaKindPolicy } from '@/modules/messages/logic/media-kind.policy.js';
 import { MediaReferenceReaderService } from '@/modules/messages/logic/media-reference-reader.service.js';
 import { MessageService } from '@/modules/messages/logic/message.service.js';
@@ -17,11 +19,13 @@ import { PinCleanupWorker } from '@/modules/messages/logic/pin-cleanup.worker.js
 import type { ChatRepository } from '@/modules/messages/logic/ports/chat.repository.js';
 import type { ChatMemberRepository } from '@/modules/messages/logic/ports/chat-member.repository.js';
 import type { MessageRepository } from '@/modules/messages/logic/ports/message.repository.js';
+import type { MessageDraftRepository } from '@/modules/messages/logic/ports/message-draft.repository.js';
 import type { MessagePinRepository } from '@/modules/messages/logic/ports/message-pin.repository.js';
 import { ReadReceiptService } from '@/modules/messages/logic/read-receipt.service.js';
 import { SelfDestructCleanupWorker } from '@/modules/messages/logic/self-destruct-cleanup.worker.js';
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 import { ChatController } from '@/modules/messages/web/chat.controller.js';
+import { DraftController } from '@/modules/messages/web/draft.controller.js';
 import { MessageController } from '@/modules/messages/web/message.controller.js';
 import { MessagePresenter } from '@/modules/messages/web/message-presenter.service.js';
 import { MultipartMediaParser } from '@/modules/messages/web/multipart-media.parser.js';
@@ -52,10 +56,14 @@ export class MessagesContainer extends Container {
     this.bind<MessagePinRepository>(MESSAGES_TYPES.MessagePinRepository)
       .to(PostgresMessagePinRepository)
       .inSingletonScope();
+    this.bind<MessageDraftRepository>(MESSAGES_TYPES.MessageDraftRepository)
+      .to(PostgresMessageDraftRepository)
+      .inSingletonScope();
 
     this.bind<MessagingPolicy>(MESSAGES_TYPES.MessagingPolicy)
       .to(MessagingPolicy)
       .inSingletonScope();
+    this.bind<DraftService>(MESSAGES_TYPES.DraftService).to(DraftService).inSingletonScope();
     this.bind<ReadReceiptService>(MESSAGES_TYPES.ReadReceiptService)
       .to(ReadReceiptService)
       .inSingletonScope();
@@ -79,6 +87,7 @@ export class MessagesContainer extends Container {
       .toConstantValue(this.get<MediaReferenceReaderService>(MESSAGES_TYPES.MediaReferenceReader));
 
     this.bind<ChatController>(MESSAGES_TYPES.ChatController).to(ChatController);
+    this.bind<DraftController>(MESSAGES_TYPES.DraftController).to(DraftController);
     this.bind<MessagePresenter>(MESSAGES_TYPES.MessagePresenter).to(MessagePresenter);
     this.bind<MultipartMediaParser>(MESSAGES_TYPES.MultipartMediaParser)
       .to(MultipartMediaParser)
