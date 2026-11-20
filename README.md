@@ -274,28 +274,28 @@ One-on-one messaging lives in the `messages` module and is mounted at
 `/api/chats`. All routes require a bearer token and a verified email; writes also
 use the shared `rl:messages:` bucket (120 requests per 15 minutes).
 
-| Method   | Path                                             | Description                                 |
-| -------- | ------------------------------------------------ | ------------------------------------------- |
-| `POST`   | `/api/chats`                                     | Open (or retrieve) a direct chat            |
-| `GET`    | `/api/chats`                                     | List the caller's chats, most active first  |
-| `POST`   | `/api/chats/:chatId/read`                        | Advance the caller's read watermark         |
-| `PATCH`  | `/api/chats/:chatId/self-destruct`               | Set or clear the caller's timer preset      |
-| `PUT`    | `/api/chats/:chatId/draft`                       | Save the caller's unsent text draft         |
-| `GET`    | `/api/chats/:chatId/draft`                       | Read the caller's draft (or `null`)         |
-| `DELETE` | `/api/chats/:chatId/draft`                       | Clear the caller's draft (idempotent)       |
-| `GET`    | `/api/chats/mentions`                           | List the caller's mentions with unread count |
-| `POST`   | `/api/chats/mentions/:mentionId/read`           | Mark one mention as read                    |
-| `POST`   | `/api/chats/mentions/read`                      | Mark up to 100 mentions as read             |
-| `POST`   | `/api/chats/:chatId/messages/:messageId/pin`     | Pin a message for a chosen duration         |
-| `DELETE` | `/api/chats/:chatId/messages/:messageId/pin`     | Remove the caller's pin (idempotent)        |
-| `GET`    | `/api/chats/:chatId/pins`                        | List the caller's pinned messages           |
-| `POST`   | `/api/chats/:chatId/messages`                    | Send a text message                         |
-| `GET`    | `/api/chats/:chatId/messages`                    | List history with keyset pagination         |
-| `PATCH`  | `/api/chats/:chatId/messages/:messageId`         | Edit an owned message                       |
-| `DELETE` | `/api/chats/:chatId/messages/:messageId`         | Soft-delete an owned message                |
-| `POST`   | `/api/chats/:chatId/messages/:messageId/forward` | Forward a message into another chat         |
-| `POST`   | `/api/chats/:chatId/messages/media`              | Attach a ready `mediaId` as a media message |
-| `POST`   | `/api/chats/:chatId/messages/media/upload`       | Multipart upload-and-send in one request    |
+| Method   | Path                                             | Description                                  |
+| -------- | ------------------------------------------------ | -------------------------------------------- |
+| `POST`   | `/api/chats`                                     | Open (or retrieve) a direct chat             |
+| `GET`    | `/api/chats`                                     | List the caller's chats, most active first   |
+| `POST`   | `/api/chats/:chatId/read`                        | Advance the caller's read watermark          |
+| `PATCH`  | `/api/chats/:chatId/self-destruct`               | Set or clear the caller's timer preset       |
+| `PUT`    | `/api/chats/:chatId/draft`                       | Save the caller's unsent text draft          |
+| `GET`    | `/api/chats/:chatId/draft`                       | Read the caller's draft (or `null`)          |
+| `DELETE` | `/api/chats/:chatId/draft`                       | Clear the caller's draft (idempotent)        |
+| `GET`    | `/api/chats/mentions`                            | List the caller's mentions with unread count |
+| `POST`   | `/api/chats/mentions/:mentionId/read`            | Mark one mention as read                     |
+| `POST`   | `/api/chats/mentions/read`                       | Mark up to 100 mentions as read              |
+| `POST`   | `/api/chats/:chatId/messages/:messageId/pin`     | Pin a message for a chosen duration          |
+| `DELETE` | `/api/chats/:chatId/messages/:messageId/pin`     | Remove the caller's pin (idempotent)         |
+| `GET`    | `/api/chats/:chatId/pins`                        | List the caller's pinned messages            |
+| `POST`   | `/api/chats/:chatId/messages`                    | Send a text message                          |
+| `GET`    | `/api/chats/:chatId/messages`                    | List history with keyset pagination          |
+| `PATCH`  | `/api/chats/:chatId/messages/:messageId`         | Edit an owned message                        |
+| `DELETE` | `/api/chats/:chatId/messages/:messageId`         | Soft-delete an owned message                 |
+| `POST`   | `/api/chats/:chatId/messages/:messageId/forward` | Forward a message into another chat          |
+| `POST`   | `/api/chats/:chatId/messages/media`              | Attach a ready `mediaId` as a media message  |
+| `POST`   | `/api/chats/:chatId/messages/media/upload`       | Multipart upload-and-send in one request     |
 
 `POST /api/chats` accepts `{ "participantId": "<uuid>" }`. It returns `201` for a
 new chat and `200` for the existing pair, and every chat response embeds public
