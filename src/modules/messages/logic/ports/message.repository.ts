@@ -14,6 +14,7 @@ export interface CreateMessageInput {
   replyToMessageId?: string | null;
   forwardedFromChatId?: string | null;
   forwardedFromMessageId?: string | null;
+  expiresAt?: Date | null;
 }
 
 /**
@@ -41,6 +42,7 @@ export interface CreateSecretMessageInput {
   ciphertext: string;
   nonce: string;
   ephemeralPublicKey: string;
+  expiresAt?: Date | null;
 }
 
 export interface MessageRepository {
@@ -73,4 +75,13 @@ export interface MessageRepository {
 
   /** Batched variant for chat lists; chats with zero unread may be absent. */
   countUnreadByChats(readerId: string, chatIds: readonly string[]): Promise<Map<string, number>>;
+
+  /** Live rows whose deadline has passed, oldest deadline first. */
+  listExpired(now: Date, limit: number): Promise<MessageRecord[]>;
+
+  /**
+   * Conditionally clears content on one still-live expired row.
+   * Returns false when a row was missing, already scrubbed, or not expired.
+   */
+  scrubExpired(chatId: string, id: string, deletedAt: Date): Promise<boolean>;
 }

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { mediaKindSchema } from '@/core/media/media-form.schema.js';
+import { SELF_DESTRUCT_PRESETS } from '@/modules/messages/logic/entities/self-destruct-preset.js';
 
 export type { CombinedMediaFieldsSchema, MediaKind } from '@/core/media/media-form.schema.js';
 export { combinedMediaFieldsSchema, mediaKindSchema } from '@/core/media/media-form.schema.js';
@@ -20,6 +21,13 @@ export const chatParamsSchema = z.object({
 /** Body for advancing a chat's read watermark. An absent id means "up to now". */
 export const markReadSchema = z.object({
   messageId: z.uuid().optional(),
+});
+
+/** Caller-scoped self-destruct preset; null clears the caller's timer. */
+export const selfDestructPresetSchema = z.enum(SELF_DESTRUCT_PRESETS);
+
+export const setSelfDestructSchema = z.object({
+  preset: selfDestructPresetSchema.nullable(),
 });
 
 /** Route parameters for operations on a single message. */

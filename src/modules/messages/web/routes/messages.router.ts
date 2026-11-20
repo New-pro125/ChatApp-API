@@ -69,6 +69,18 @@ export class MessagesRouter {
         req.container.get<ChatController>(MESSAGES_TYPES.ChatController).markRead(req, res, next),
     );
 
+    routes.patch(
+      '/:chatId/self-destruct',
+      messageContracts.setSelfDestruct,
+      this.requireAuth.handle,
+      this.requireVerifiedEmail.handle,
+      this.limiter.handle,
+      (req, res, next) =>
+        req.container
+          .get<ChatController>(MESSAGES_TYPES.ChatController)
+          .setSelfDestruct(req, res, next),
+    );
+
     routes.post(
       '/:chatId/messages/:messageId/pin',
       messageContracts.pinMessage,

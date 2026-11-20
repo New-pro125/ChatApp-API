@@ -1,0 +1,2 @@
+ALTER TABLE "messages" DROP CONSTRAINT "messages_media_shape_check";--> statement-breakpoint
+ALTER TABLE "messages" ADD CONSTRAINT "messages_media_shape_check" CHECK ("type" <> 'media' or "deleted_at" is not null or "expires_at" is not null or ("media_id" is not null and "media_kind" in ('image', 'video', 'document', 'voice_note', 'sticker', 'gif') and "body" is null and "ciphertext" is null and "nonce" is null and "ephemeral_public_key" is null and "sender_device_id" is null and "recipient_device_id" is null));
