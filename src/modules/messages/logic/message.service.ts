@@ -1,4 +1,5 @@
 import { inject, injectable } from 'inversify';
+import type { Logger } from 'pino';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import type { E2eeCiphertextValidator } from '@/core/e2ee/e2ee-ciphertext.validator.js';
 import type { E2eeDeviceReader } from '@/core/e2ee/e2ee-device.reader.js';
@@ -12,6 +13,7 @@ import {
   NotFoundException,
 } from '@/core/errors/http.error.js';
 import type { IncomingMediaUpload, MediaAccess } from '@/core/media/media-access.port.js';
+import type { DraftService } from '@/modules/messages/logic/draft.service.js';
 import type { MediaKind, MessageRecord } from '@/modules/messages/logic/entities/message-record.js';
 import { SelfDestructTimer } from '@/modules/messages/logic/entities/self-destruct-timer.js';
 import type { MediaKindPolicy } from '@/modules/messages/logic/media-kind.policy.js';
@@ -78,6 +80,8 @@ export class MessageService {
     private readonly ciphertextValidator: E2eeCiphertextValidator,
     @inject(CORE_TYPES.MediaAccess) private readonly mediaAccess: MediaAccess,
     @inject(MESSAGES_TYPES.MediaKindPolicy) private readonly kinds: MediaKindPolicy,
+    @inject(MESSAGES_TYPES.DraftService) private readonly drafts: DraftService,
+    @inject(CORE_TYPES.Logger) private readonly logger: Logger,
   ) {}
 
   async send(userId: string, chatId: string, input: SendMessageInput): Promise<MessageRecord> {
@@ -96,7 +100,7 @@ export class MessageService {
 
     const expiresAt = await this.expiryFor(chatId, userId);
 
-    return this.messages.create({
+    const message = await this.messages.create({
       chatId,
       senderId: userId,
       body: input.body,
@@ -104,6 +108,9 @@ export class MessageService {
       replyToMessageId: input.replyToMessageId ?? null,
       expiresAt,
     });
+    await this.clearDraftAfterSend(chatId, userId);
+
+    return message;
   }
 
   async sendMedia(
@@ -127,7 +134,7 @@ export class MessageService {
     this.kinds.assertMatches(input.kind, asset.contentType);
     const expiresAt = await this.expiryFor(chatId, userId);
 
-    return this.messages.create({
+    const message = await this.messages.create({
       chatId,
       senderId: userId,
       body: null,
@@ -143,6 +150,9 @@ export class MessageService {
       replyToMessageId: input.replyToMessageId ?? null,
       expiresAt,
     });
+    await this.clearDraftAfterSend(chatId, userId);
+
+    return message;
   }
 
   async sendMediaFromUpload(
@@ -173,7 +183,7 @@ export class MessageService {
     });
     const expiresAt = await this.expiryFor(chatId, userId);
 
-    return this.messages.create({
+    const message = await this.messages.create({
       chatId,
       senderId: userId,
       body: null,
@@ -189,6 +199,9 @@ export class MessageService {
       replyToMessageId: input.replyToMessageId ?? null,
       expiresAt,
     });
+    await this.clearDraftAfterSend(chatId, userId);
+
+    return message;
   }
 
   /** Stores ciphertext for the caller's device and a device of the other member. */
@@ -316,7 +329,7 @@ export class MessageService {
 
     const expiresAt = await this.expiryFor(targetChatId, userId);
 
-    return this.messages.create({
+    const message = await this.messages.create({
       chatId: targetChatId,
       senderId: userId,
       body: original.media === null ? original.body : null,
@@ -326,6 +339,18 @@ export class MessageService {
       forwardedFromMessageId: messageId,
       expiresAt,
     });
+    await this.clearDraftAfterSend(targetChatId, userId);
+
+    return message;
+  }
+
+  /** A stale draft is recoverable; a failed send is not. Never fail a send for this. */
+  private async clearDraftAfterSend(chatId: string, userId: string): Promise<void> {
+    try {
+      await this.drafts.clearOnSend(chatId, userId);
+    } catch (error) {
+      this.logger.warn({ err: error, chatId, userId }, 'Failed to clear message draft after send');
+    }
   }
 
   /** Resolves the sender's current preset in the target chat at send time. */
