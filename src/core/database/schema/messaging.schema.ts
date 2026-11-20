@@ -136,7 +136,9 @@ export const messages = pgTable(
       .references(() => users.id, { onDelete: 'restrict' }),
     type: text('type').notNull().default('text'),
     body: text('body'),
-    mediaId: uuid('media_id').references(() => mediaObjects.id, { onDelete: 'restrict' }),
+    // An expired row may still hold a reference when its media object is
+    // released; clearing it automatically keeps release-before-scrub retryable.
+    mediaId: uuid('media_id').references(() => mediaObjects.id, { onDelete: 'set null' }),
     mediaKind: text('media_kind'),
     caption: text('caption'),
     durationMs: integer('duration_ms'),
@@ -187,10 +189,12 @@ export const messages = pgTable(
       sql`${sql.identifier('type')} <> 'secret' or (${sql.identifier('reply_to_message_id')} is null and ${sql.identifier('forwarded_from_chat_id')} is null and ${sql.identifier('forwarded_from_message_id')} is null)`,
     ),
     // Soft deletion clears the media columns to release the FK, so the shape
-    // requirement applies to live rows only.
+    // requirement applies to live rows only. An expiring row is also exempt:
+    // releasing its media object before scrub uses ON DELETE SET NULL, which
+    // briefly leaves media_id null while the row is still awaiting scrub.
     check(
       'messages_media_shape_check',
-      sql`${sql.identifier('type')} <> 'media' or ${sql.identifier('deleted_at')} is not null or (${sql.identifier('media_id')} is not null and ${sql.identifier('media_kind')} in ('image', 'video', 'document', 'voice_note', 'sticker', 'gif') and ${sql.identifier('body')} is null and ${sql.identifier('ciphertext')} is null and ${sql.identifier('nonce')} is null and ${sql.identifier('ephemeral_public_key')} is null and ${sql.identifier('sender_device_id')} is null and ${sql.identifier('recipient_device_id')} is null)`,
+      sql`${sql.identifier('type')} <> 'media' or ${sql.identifier('deleted_at')} is not null or ${sql.identifier('expires_at')} is not null or (${sql.identifier('media_id')} is not null and ${sql.identifier('media_kind')} in ('image', 'video', 'document', 'voice_note', 'sticker', 'gif') and ${sql.identifier('body')} is null and ${sql.identifier('ciphertext')} is null and ${sql.identifier('nonce')} is null and ${sql.identifier('ephemeral_public_key')} is null and ${sql.identifier('sender_device_id')} is null and ${sql.identifier('recipient_device_id')} is null)`,
     ),
     check(
       'messages_non_media_no_media_check',

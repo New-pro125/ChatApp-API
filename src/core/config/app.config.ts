@@ -119,6 +119,14 @@ export class PinCleanupConfig {
   }
 }
 
+export class SelfDestructCleanupConfig {
+  constructor(readonly intervalMinutes: number) {
+    if (!Number.isInteger(this.intervalMinutes) || this.intervalMinutes <= 0) {
+      throw new Error('SELF_DESTRUCT_CLEANUP_INTERVAL_MINUTES must be a positive integer');
+    }
+  }
+}
+
 const DEFAULT_MEDIA_CONTENT_TYPES = [
   'image/jpeg',
   'image/png',
@@ -349,6 +357,7 @@ export class AppConfig {
   readonly verification: EmailVerificationConfig;
   readonly stories: StoryConfig;
   readonly pinCleanup: PinCleanupConfig;
+  readonly selfDestructCleanup: SelfDestructCleanupConfig;
   readonly media: MediaConfig;
   readonly clamAv: ClamAvConfig;
   readonly captcha: CaptchaConfig;
@@ -434,6 +443,10 @@ export class AppConfig {
     this.stories = new StoryConfig(env.readNumber('STORY_TTL_SECONDS', 86_400));
 
     this.pinCleanup = new PinCleanupConfig(env.readNumber('PIN_CLEANUP_INTERVAL_MINUTES', 5));
+
+    this.selfDestructCleanup = new SelfDestructCleanupConfig(
+      env.readNumber('SELF_DESTRUCT_CLEANUP_INTERVAL_MINUTES', 5),
+    );
 
     this.media = new MediaConfig(
       env.readRequired('MEDIA_BUCKET'),

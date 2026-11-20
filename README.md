@@ -366,6 +366,13 @@ Every chat returned by `GET /api/chats` includes `selfDestructPreset`, which is 
 caller's own setting for that chat (`null` when off). The peer's setting is never returned,
 and individual message responses never include expiry or countdown metadata.
 
+Elapsed messages are hidden by every read immediately, before cleanup runs. A BullMQ
+repeatable job physically scrubs them every
+`SELF_DESTRUCT_CLEANUP_INTERVAL_MINUTES` (default `5`): pins are removed, message
+content and ciphertext are cleared, media columns are cleared, and the media object is
+deleted only after the last live reference expires. A worker or Redis outage only delays
+storage cleanup; it never makes an elapsed message visible again.
+
 ### Media messages
 
 Media messages use `type: "media"` with `body: null` and a `media` object

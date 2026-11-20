@@ -12,6 +12,7 @@ export const MESSAGES_TYPES = {
   MessageService: Symbol.for('Messages.MessageService'),
   PinService: Symbol.for('Messages.PinService'),
   PinCleanupWorker: Symbol.for('Messages.PinCleanupWorker'),
+  SelfDestructCleanupWorker: Symbol.for('Messages.SelfDestructCleanupWorker'),
   PinController: Symbol.for('Messages.PinController'),
   MediaKindPolicy: Symbol.for('Messages.MediaKindPolicy'),
   MediaReferenceReader: Symbol.for('Messages.MediaReferenceReader'),
