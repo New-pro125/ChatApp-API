@@ -1,4 +1,8 @@
+import { Container } from 'inversify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { MessageMentionRepository } from '@/modules/messages/logic/ports/message-mention.repository.js';
+import { MessagesContainer } from '@/modules/messages/messages.container.js';
+import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 import { expectError, expectSuccess } from '../../helpers/assertions.js';
 import { TestApp } from '../../helpers/test-app.js';
 import { type ApiUser, MessagingApiFixture } from './messaging-api.fixture.js';
@@ -24,10 +28,13 @@ interface Inbox {
 describe('mention inbox API', () => {
   let app: TestApp;
   let fixture: MessagingApiFixture;
+  let mentions: MessageMentionRepository;
 
   beforeAll(async () => {
     app = await TestApp.create();
     fixture = new MessagingApiFixture(app);
+    const container = new MessagesContainer(new Container({ parent: app.container }));
+    mentions = container.get<MessageMentionRepository>(MESSAGES_TYPES.MessageMentionRepository);
   });
 
   afterAll(async () => {
@@ -168,7 +175,7 @@ describe('mention inbox API', () => {
 
   it('returns 404 for another user mention and 400 for invalid input', async () => {
     const { alice, bob, chatId } = await pair();
-    await send(chatId, alice, 'one @bob_01');
+    const messageId = await send(chatId, alice, 'one @bob_01');
     const id = (await inbox(bob)).mentions[0]?.id as string;
 
     expectError(
@@ -187,6 +194,49 @@ describe('mention inbox API', () => {
       'VALIDATION_ERROR',
     );
     expectError(await app.request.get('/api/chats/mentions'), 401, 'UNAUTHORIZED');
+
+    await app.request.delete(`/api/chats/${chatId}/messages/${messageId}`).set(alice.headers);
+    expectError(
+      await app.request.post(`/api/chats/mentions/${id}/read`).set(bob.headers),
+      404,
+      'NOT_FOUND',
+    );
+  });
+
+  it('gates every mention route behind verified email', async () => {
+    const { alice } = await pair();
+    const unverified = await fixture.unverifiedUser('Unverified');
+    await app.pool.query(`UPDATE users SET username = $1 WHERE id = $2`, [
+      'unverified_01',
+      unverified.id,
+    ]);
+    const chatId = await fixture.openDirectChat(unverified.id, alice.headers);
+    await send(chatId, alice, 'ping @unverified_01');
+
+    const records = await mentions.list(unverified.id, { limit: 10 });
+    const record = records[0];
+    if (!record) {
+      throw new Error('missing mention row');
+    }
+
+    expectError(
+      await app.request.get('/api/chats/mentions').set(unverified.headers),
+      403,
+      'EMAIL_NOT_VERIFIED',
+    );
+    expectError(
+      await app.request.post(`/api/chats/mentions/${record.id}/read`).set(unverified.headers),
+      403,
+      'EMAIL_NOT_VERIFIED',
+    );
+    expectError(
+      await app.request
+        .post('/api/chats/mentions/read')
+        .set(unverified.headers)
+        .send({ mentionIds: [record.id] }),
+      403,
+      'EMAIL_NOT_VERIFIED',
+    );
   });
 
   it('keeps unknown and non-member names as plain text', async () => {

@@ -114,4 +114,54 @@ describe('MessageMentionRepository', () => {
     expect(await mentions.markRead(alice.id, [row.id], new Date())).toBe(0);
     expect((await mentions.findById(bob.id, row.id))?.readAt).toBeNull();
   });
+
+  it('serializes overlapping syncs on the message row', async () => {
+    const { alice, bob, chatId } = await pairWithNames();
+    const carol = await fixture.verifiedUser('Carol');
+    const dave = await fixture.verifiedUser('Dave');
+    const messageId = await send(chatId, alice.headers, 'hello @bob_01');
+    await mentions.sync(chatId, messageId, [bob.id], new Date('2026-11-20T10:00:00Z'));
+
+    const client = await app.pool.connect();
+    const settled = (promise: Promise<void>): Promise<'done' | 'rejected'> =>
+      promise.then(
+        () => 'done',
+        () => 'rejected',
+      );
+
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT 1 FROM messages WHERE chat_id = $1 AND id = $2 FOR SHARE', [
+        chatId,
+        messageId,
+      ]);
+
+      const first = settled(
+        mentions.sync(chatId, messageId, [carol.id], new Date('2026-11-20T11:00:00Z')),
+      );
+      const second = settled(
+        mentions.sync(chatId, messageId, [bob.id, dave.id], new Date('2026-11-20T12:00:00Z')),
+      );
+      const race = await Promise.race([
+        Promise.all([first, second]).then(() => 'settled' as const),
+        new Promise<'waiting'>((resolve) => {
+          setTimeout(() => resolve('waiting'), 500);
+        }),
+      ]);
+      expect(race).toBe('waiting');
+
+      await client.query('COMMIT');
+      expect(await Promise.all([first, second])).toEqual(['done', 'done']);
+    } finally {
+      await client.query('ROLLBACK').catch(() => undefined);
+      client.release();
+    }
+
+    const byMessage = await mentions.listForMessages(chatId, [messageId]);
+    const targets = (byMessage.get(messageId) ?? []).map((row) => row.mentionedUserId).sort();
+    const expected = [[carol.id].sort(), [bob.id, dave.id].sort()];
+    expect(
+      expected.some((candidate) => JSON.stringify(candidate) === JSON.stringify(targets)),
+    ).toBe(true);
+  });
 });

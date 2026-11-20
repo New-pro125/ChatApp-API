@@ -28,6 +28,14 @@ export class PostgresMessageMentionRepository implements MessageMentionRepositor
   ): Promise<void> {
     try {
       await this.db.transaction(async (tx) => {
+        // Serialize rewrites of one message's mention set. Transaction-scoped row
+        // locks are safe with PgBouncer's transaction pooling.
+        await tx
+          .select({ id: messages.id })
+          .from(messages)
+          .where(and(eq(messages.chatId, chatId), eq(messages.id, messageId)))
+          .for('update');
+
         const existing = await tx
           .select({ id: messageMentions.id, userId: messageMentions.mentionedUserId })
           .from(messageMentions)
