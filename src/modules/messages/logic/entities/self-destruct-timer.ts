@@ -9,6 +9,8 @@ export class SelfDestructTimer {
   };
 
   static expiryFor(preset: SelfDestructPreset | null, now: Date = new Date()): Date | null {
-    return preset === null ? null : new Date(now.getTime() + this.seconds[preset] * 1000);
+    return preset === null
+      ? null
+      : new Date(now.getTime() + SelfDestructTimer.seconds[preset] * 1000);
   }
 }

@@ -13,6 +13,7 @@ import type {
   ChatMemberRecord,
   ChatMemberRole,
 } from '@/modules/messages/logic/entities/chat-member-record.js';
+import type { SelfDestructPreset } from '@/modules/messages/logic/entities/self-destruct-preset.js';
 import type { ChatMemberRepository } from '@/modules/messages/logic/ports/chat-member.repository.js';
 
 /** PostgreSQL persistence for chat membership. */
@@ -148,6 +149,34 @@ export class PostgresChatMemberRepository implements ChatMemberRepository {
       }
 
       throw new PersistenceException('Failed to mark chat read', { cause: error });
+    }
+  }
+
+  async setSelfDestructPreset(
+    chatId: string,
+    userId: string,
+    preset: SelfDestructPreset | null,
+  ): Promise<ChatMemberRecord> {
+    try {
+      const rows = await this.db
+        .update(chatMembers)
+        .set({ selfDestructPreset: preset })
+        .where(and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, userId)))
+        .returning(chatMemberSelection);
+
+      const updated = rows[0];
+
+      if (!updated) {
+        throw new PersistenceException('Failed to set self-destruct preset: membership not found');
+      }
+
+      return this.mapper.toRecord(updated);
+    } catch (error) {
+      if (error instanceof PersistenceException) {
+        throw error;
+      }
+
+      throw new PersistenceException('Failed to set self-destruct preset', { cause: error });
     }
   }
 }

@@ -7,6 +7,7 @@ import { UniqueConstraintException } from '@/core/errors/repository.error.js';
 import type { UserSummary, UserSummaryReader } from '@/core/users/user-summary.reader.js';
 import type { ChatRecord } from '@/modules/messages/logic/entities/chat-record.js';
 import { ChatView } from '@/modules/messages/logic/entities/chat-view.js';
+import type { SelfDestructPreset } from '@/modules/messages/logic/entities/self-destruct-preset.js';
 import type { MessagingPolicy } from '@/modules/messages/logic/messaging-policy.service.js';
 import type { ChatRepository } from '@/modules/messages/logic/ports/chat.repository.js';
 import type { ChatMemberRepository } from '@/modules/messages/logic/ports/chat-member.repository.js';
@@ -89,6 +90,17 @@ export class ChatService {
     return { view: await this.toView(created.chat, creatorId), created: created.created };
   }
 
+  async setSelfDestructPreset(
+    userId: string,
+    chatId: string,
+    preset: SelfDestructPreset | null,
+  ): Promise<SelfDestructPreset | null> {
+    await this.policy.requireMember(chatId, userId);
+    const member = await this.members.setSelfDestructPreset(chatId, userId, preset);
+
+    return member.selfDestructPreset;
+  }
+
   async listForUser(userId: string): Promise<ChatView[]> {
     const chats = await this.chats.listByUser(userId);
 
@@ -102,6 +114,11 @@ export class ChatService {
     );
 
     const memberships = await this.members.listByChats(chats.map((chat) => chat.id));
+    const viewerPresetByChat = new Map(
+      memberships
+        .filter((membership) => membership.userId === userId)
+        .map((membership) => [membership.chatId, membership.selfDestructPreset]),
+    );
     const userIds = [...new Set(memberships.map((membership) => membership.userId))];
     const summaries = await this.users.findSummaries(userIds);
     const summariesById = new Map(summaries.map((summary) => [summary.id, summary]));
@@ -118,7 +135,13 @@ export class ChatService {
     }
 
     return chats.map(
-      (chat) => new ChatView(chat, byChat.get(chat.id) ?? [], unread.get(chat.id) ?? 0),
+      (chat) =>
+        new ChatView(
+          chat,
+          byChat.get(chat.id) ?? [],
+          unread.get(chat.id) ?? 0,
+          viewerPresetByChat.get(chat.id) ?? null,
+        ),
     );
   }
 
@@ -205,8 +228,14 @@ export class ChatService {
       return summary ? [summary] : [];
     });
     const unread = await this.messages.countUnreadByChats(viewerId, [chat.id]);
+    const viewer = memberships.find((member) => member.userId === viewerId);
 
-    return new ChatView(chat, participants, unread.get(chat.id) ?? 0);
+    return new ChatView(
+      chat,
+      participants,
+      unread.get(chat.id) ?? 0,
+      viewer?.selfDestructPreset ?? null,
+    );
   }
 
   /** Order-independent key so either side can open the same direct chat. */
