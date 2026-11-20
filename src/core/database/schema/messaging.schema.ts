@@ -168,9 +168,12 @@ export const messages = pgTable(
       'messages_body_length_check',
       sql`${table.body} is null or char_length(${table.body}) between 1 and 4096`,
     ),
-    // Only text rows need a body; media rows carry a reference and secret
-    // rows carry ciphertext, so both must keep `body` null.
-    check('messages_text_body_check', sql`${table.type} <> 'text' or ${table.body} is not null`),
+    // Only live text rows need a body. Scrubbing an expired text message clears
+    // its content while keeping the row as a tombstone, so deleted rows are exempt.
+    check(
+      'messages_text_body_check',
+      sql`${sql.identifier('type')} <> 'text' or ${sql.identifier('body')} is not null or ${sql.identifier('deleted_at')} is not null`,
+    ),
     check(
       'messages_secret_shape_check',
       sql`${sql.identifier('type')} <> 'secret' or (${sql.identifier('body')} is null and ${sql.identifier('ciphertext')} is not null and ${sql.identifier('nonce')} is not null and ${sql.identifier('ephemeral_public_key')} is not null and ${sql.identifier('sender_device_id')} is not null and ${sql.identifier('recipient_device_id')} is not null)`,
