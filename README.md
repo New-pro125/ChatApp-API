@@ -376,6 +376,19 @@ content and ciphertext are cleared, media columns are cleared, and the media obj
 deleted only after the last live reference expires. A worker or Redis outage only delays
 storage cleanup; it never makes an elapsed message visible again.
 
+### Message drafts
+
+`PUT /api/chats/:chatId/draft` accepts `{ "body": "..." }` with a trimmed body of 1–4096
+characters and saves one private draft per chat and caller. Saving again overwrites the body
+and refreshes `updatedAt`, so the latest save from any device wins. `GET` returns
+`{ "body": "...", "updatedAt": "..." }` or `data: null` when no draft exists; `DELETE` is
+idempotent and returns `204`.
+
+Drafts are visible only to their author and never appear in chat lists, message history, or
+unread counts. Secret chats return `403 E2EE_NOT_ALLOWED` so their plaintext never reaches
+the server. A successful cloud message send in that chat clears the caller's draft (text,
+media, upload, or forward), while the peer's draft is untouched.
+
 ### Media messages
 
 Media messages use `type: "media"` with `body: null` and a `media` object

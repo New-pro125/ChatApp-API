@@ -173,4 +173,60 @@ describe('message drafts', () => {
       'EMAIL_NOT_VERIFIED',
     );
   });
+
+  it('clears only the sender draft after a text send', async () => {
+    const { alice, bob, chatId } = await pair();
+
+    await app.request.put(draftUrl(chatId)).set(alice.headers).send({ body: 'unsent' });
+    await app.request.put(draftUrl(chatId)).set(bob.headers).send({ body: 'bob draft' });
+
+    expectSuccess(
+      await app.request
+        .post(`/api/chats/${chatId}/messages`)
+        .set(alice.headers)
+        .send({ body: 'sent' }),
+      201,
+    );
+
+    expect(expectSuccess(await app.request.get(draftUrl(chatId)).set(alice.headers), 200)).toBeNull();
+    expect(
+      expectSuccess<DraftResponse>(await app.request.get(draftUrl(chatId)).set(bob.headers), 200)
+        .body,
+    ).toBe('bob draft');
+  });
+
+  it('clears the target draft after a forward', async () => {
+    const { alice, chatId } = await pair();
+    const carol = await fixture.verifiedUser('Carol');
+    const targetChatId = await fixture.openDirectChat(carol.id, alice.headers);
+
+    const source = expectSuccess<{ id: string }>(
+      await app.request
+        .post(`/api/chats/${chatId}/messages`)
+        .set(alice.headers)
+        .send({ body: 'source' }),
+      201,
+    );
+    await app.request.put(draftUrl(chatId)).set(alice.headers).send({ body: 'unsent' });
+    await app.request
+      .put(draftUrl(targetChatId))
+      .set(alice.headers)
+      .send({ body: 'forward draft' });
+
+    expectSuccess(
+      await app.request
+        .post(`/api/chats/${chatId}/messages/${source.id}/forward`)
+        .set(alice.headers)
+        .send({ targetChatId }),
+      201,
+    );
+
+    expect(
+      expectSuccess(await app.request.get(draftUrl(targetChatId)).set(alice.headers), 200),
+    ).toBeNull();
+    expect(
+      expectSuccess<DraftResponse>(await app.request.get(draftUrl(chatId)).set(alice.headers), 200)
+        .body,
+    ).toBe('unsent');
+  });
 });

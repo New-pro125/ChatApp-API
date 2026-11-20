@@ -117,6 +117,8 @@ function setup(chatType: 'direct' | 'secret' = 'direct') {
     {} as never,
     mediaAccess,
     new MediaKindPolicy(),
+    { clearOnSend: () => Promise.resolve() } as never,
+    { warn: () => undefined } as never,
   );
   return { service, created, deleted, released, lookups, stores };
 }
@@ -242,6 +244,7 @@ describe('MessageService MediaAccess port timing', () => {
     root.bind(CORE_TYPES.Db).toConstantValue({} as never);
     root.bind(CORE_TYPES.E2eeDeviceReader).toConstantValue({} as never);
     root.bind(CORE_TYPES.E2eeCiphertextValidator).toConstantValue({} as never);
+    root.bind(CORE_TYPES.Logger).toConstantValue({ warn: () => undefined } as never);
     root.bind(CORE_TYPES.Config).toConstantValue({
       media: { allowedContentTypes: ['image/png'], maxBytes: 100, scanRequired: true },
     } as unknown as AppConfig);
