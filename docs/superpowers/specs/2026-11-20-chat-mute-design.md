@@ -190,7 +190,7 @@ fields next to `selfDestructPreset`:
 { "muted": false, "muteExpiresAt": null }
 ```
 
-Add an OpenAPI contract with operation id `messages.setMute`, the same Zod body
+Add an OpenAPI contract with operation id `chats.setMute`, the same Zod body
 schema, and success/error envelopes. Invalid or missing presets return the
 existing `400 VALIDATION_ERROR`; unauthenticated callers return `401
 UNAUTHORIZED`; unverified callers return `403 EMAIL_NOT_VERIFIED`.
