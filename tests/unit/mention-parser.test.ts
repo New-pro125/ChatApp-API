@@ -5,10 +5,7 @@ describe('MentionParser', () => {
   const parser = new MentionParser();
 
   it('deduplicates case-insensitively and keeps only valid names', () => {
-    expect(parser.parse('hi @alice_01 and @ALICE_01 and @bob_02')).toEqual([
-      'alice_01',
-      'bob_02',
-    ]);
+    expect(parser.parse('hi @alice_01 and @ALICE_01 and @bob_02')).toEqual(['alice_01', 'bob_02']);
     expect(parser.parse('')).toEqual([]);
     expect(parser.parse('@abc @abcdefghijklmnopqrstuvwxyz1234567')).toEqual([]);
   });

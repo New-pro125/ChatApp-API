@@ -70,7 +70,7 @@ export class MentionService {
     return (await this.repository.findById(userId, id)) ?? existing;
   }
 
-  async markMany(userId: string, ids: readonly string[]): Promise<number> {
+  markMany(userId: string, ids: readonly string[]): Promise<number> {
     const unique = [...new Set(ids)].slice(0, 100);
     return this.repository.markRead(userId, unique, new Date());
   }

@@ -6,7 +6,7 @@ import { MessagesContainer } from '@/modules/messages/messages.container.js';
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 import { expectNoContent, expectSuccess } from '../../helpers/assertions.js';
 import { TestApp } from '../../helpers/test-app.js';
-import { MessagingApiFixture, type ApiUser } from './messaging-api.fixture.js';
+import { type ApiUser, MessagingApiFixture } from './messaging-api.fixture.js';
 
 interface MentionItem {
   id: string;
@@ -125,10 +125,7 @@ describe('mention lifecycle', () => {
         id: string;
         mentions: Array<{ userId: string; username: string | null; displayName: string }>;
       }>
-    >(
-      await app.request.get(`/api/chats/${targetChatId}/messages`).set(alice.headers),
-      200,
-    );
+    >(await app.request.get(`/api/chats/${targetChatId}/messages`).set(alice.headers), 200);
     expect(targetHistory.find((message) => message.id === forwarded.id)?.mentions).toEqual([
       { userId: third.id, username: 'third_01', displayName: 'Third' },
     ]);

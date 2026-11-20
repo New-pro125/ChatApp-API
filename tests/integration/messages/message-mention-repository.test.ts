@@ -55,7 +55,9 @@ describe('MessageMentionRepository', () => {
     const first = await mentions.list(bob.id, { limit: 10 });
     expect(first[0]?.mentionedByUserId).toBe(alice.id);
     const row = first[0];
-    if (!row) throw new Error('missing mention row');
+    if (!row) {
+      throw new Error('missing mention row');
+    }
 
     await mentions.markRead(bob.id, [row.id], new Date('2026-11-20T11:00:00Z'));
     expect(await mentions.countUnread(bob.id)).toBe(0);
@@ -105,7 +107,9 @@ describe('MessageMentionRepository', () => {
     expect(secondPage.map((row) => row.messageId)).toEqual([ids[0]]);
 
     const row = firstPage[0];
-    if (!row) throw new Error('missing mention row');
+    if (!row) {
+      throw new Error('missing mention row');
+    }
     expect(await mentions.findById(alice.id, row.id)).toBeNull();
     expect(await mentions.markRead(alice.id, [row.id], new Date())).toBe(0);
     expect((await mentions.findById(bob.id, row.id))?.readAt).toBeNull();

@@ -16,13 +16,13 @@ function setup() {
     markRead: vi.fn(async (_userId: string, _ids: readonly string[], _now: Date) => 1),
   };
   const usernames = {
-    findByUsername: vi.fn(async (name: string) => {
+    findByUsername: vi.fn((name: string) => {
       const ids: Record<string, string> = {
         alice: 'user-alice',
         bobby: 'user-bob',
         outsider: 'user-outsider',
       };
-      return ids[name.toLowerCase()] ?? null;
+      return Promise.resolve(ids[name.toLowerCase()] ?? null);
     }),
   };
   const members = {
@@ -37,16 +37,7 @@ function setup() {
 }
 
 function record(id: string): MessageMentionRecord {
-  return new MessageMentionRecord(
-    id,
-    'chat1',
-    'msg1',
-    'user-alice',
-    'user-bob',
-    now,
-    now,
-    null,
-  );
+  return new MessageMentionRecord(id, 'chat1', 'msg1', 'user-alice', 'user-bob', now, now, null);
 }
 
 describe('MentionService', () => {

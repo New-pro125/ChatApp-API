@@ -22,6 +22,7 @@ export const MESSAGES_TYPES = {
   MediaReferenceReader: Symbol.for('Messages.MediaReferenceReader'),
   ChatController: Symbol.for('Messages.ChatController'),
   DraftController: Symbol.for('Messages.DraftController'),
+  MentionController: Symbol.for('Messages.MentionController'),
   MessagePresenter: Symbol.for('Messages.MessagePresenter'),
   MultipartMediaParser: Symbol.for('Messages.MultipartMediaParser'),
   MessageController: Symbol.for('Messages.MessageController'),

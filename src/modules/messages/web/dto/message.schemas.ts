@@ -101,6 +101,23 @@ export const sendMediaMessageSchema = z.object({
   ...optionalMediaMetadata,
 });
 
+/** Keyset page of the caller's mention inbox. */
+export const listMentionsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+  cursor: z.uuid().optional(),
+});
+
+/** Route parameters for a single mention. */
+export const mentionParamsSchema = z.object({
+  mentionId: z.uuid(),
+});
+
+/** Body for bulk mark-as-read. Duplicates are de-duplicated by the service. */
+export const readMentionsSchema = z.object({
+  mentionIds: z.array(z.uuid()).min(1).max(100),
+});
+
+export type ListMentionsQuerySchema = z.infer<typeof listMentionsQuerySchema>;
 export type SendMessageSchema = z.infer<typeof sendMessageSchema>;
 export type ListMessagesQuerySchema = z.infer<typeof listMessagesQuerySchema>;
 export type SendMediaMessageSchema = z.infer<typeof sendMediaMessageSchema>;

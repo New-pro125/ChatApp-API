@@ -283,6 +283,9 @@ use the shared `rl:messages:` bucket (120 requests per 15 minutes).
 | `PUT`    | `/api/chats/:chatId/draft`                       | Save the caller's unsent text draft         |
 | `GET`    | `/api/chats/:chatId/draft`                       | Read the caller's draft (or `null`)         |
 | `DELETE` | `/api/chats/:chatId/draft`                       | Clear the caller's draft (idempotent)       |
+| `GET`    | `/api/chats/mentions`                           | List the caller's mentions with unread count |
+| `POST`   | `/api/chats/mentions/:mentionId/read`           | Mark one mention as read                    |
+| `POST`   | `/api/chats/mentions/read`                      | Mark up to 100 mentions as read             |
 | `POST`   | `/api/chats/:chatId/messages/:messageId/pin`     | Pin a message for a chosen duration         |
 | `DELETE` | `/api/chats/:chatId/messages/:messageId/pin`     | Remove the caller's pin (idempotent)        |
 | `GET`    | `/api/chats/:chatId/pins`                        | List the caller's pinned messages           |
@@ -388,6 +391,12 @@ Drafts are visible only to their author and never appear in chat lists, message 
 unread counts. Secret chats return `403 E2EE_NOT_ALLOWED` so their plaintext never reaches
 the server. A successful cloud message send in that chat clears the caller's draft (text,
 media, upload, or forward), while the peer's draft is untouched.
+
+### Mentions
+
+`@username` tokens in cloud text messages resolve case-insensitively to users who are members of that chat. Unknown names, non-members, and names in email addresses or URLs remain plain text. Mentions are recomputed when a message is edited and hidden when it is deleted or self-destructs.
+
+`GET /api/chats/mentions` returns `{ "unreadCount": 0, "mentions": [...] }` with cursor pagination under `meta.pagination`; no message body is included, so the client loads the message from history. Each inbox item identifies the message sender under `mentionedBy`. `POST /api/chats/mentions/:mentionId/read` marks one mention read and `POST /api/chats/mentions/read` accepts `{ "mentionIds": ["..."] }` with 1–100 ids. Message views include `mentions` with the resolved user's `userId`, `username`, and `displayName`. Push notifications for mentions are not part of this phase.
 
 ### Media messages
 

@@ -2,9 +2,11 @@ import type { Request, RequestHandler } from 'express';
 import { inject, injectable } from 'inversify';
 import type { AppConfig } from '@/core/config/app.config.js';
 import { CORE_TYPES } from '@/core/container/core.types.js';
-import { UnauthorizedException } from '@/core/errors/http.error.js';
+import { NotFoundException, UnauthorizedException } from '@/core/errors/http.error.js';
 import type { ApiResponse } from '@/core/http/response/api-response.js';
+import type { UserSummary, UserSummaryReader } from '@/core/users/user-summary.reader.js';
 import type { MessageRecord } from '@/modules/messages/logic/entities/message-record.js';
+import type { MentionService } from '@/modules/messages/logic/mention.service.js';
 import type { MessageService } from '@/modules/messages/logic/message.service.js';
 import type { PinService } from '@/modules/messages/logic/pin.service.js';
 import type { ReadReceiptService } from '@/modules/messages/logic/read-receipt.service.js';
@@ -19,7 +21,10 @@ import {
   sendMessageSchema,
   sendSecretMessageSchema,
 } from '@/modules/messages/web/dto/message.schemas.js';
-import type { MessagePresenter } from '@/modules/messages/web/message-presenter.service.js';
+import type {
+  MentionView,
+  MessagePresenter,
+} from '@/modules/messages/web/message-presenter.service.js';
 import type { MultipartMediaParser } from '@/modules/messages/web/multipart-media.parser.js';
 
 @injectable()
@@ -29,6 +34,8 @@ export class MessageController {
     @inject(MESSAGES_TYPES.PinService) private readonly pins: PinService,
     @inject(MESSAGES_TYPES.ReadReceiptService) private readonly receipts: ReadReceiptService,
     @inject(MESSAGES_TYPES.MessagePresenter) private readonly presenter: MessagePresenter,
+    @inject(MESSAGES_TYPES.MentionService) private readonly mentions: MentionService,
+    @inject(CORE_TYPES.UserSummaryReader) private readonly users: UserSummaryReader,
     @inject(CORE_TYPES.ApiResponse) private readonly response: ApiResponse,
     @inject(MESSAGES_TYPES.MultipartMediaParser) private readonly parser: MultipartMediaParser,
     @inject(CORE_TYPES.Config) private readonly config: AppConfig,
@@ -100,11 +107,19 @@ export class MessageController {
       userId,
       page.map((message) => message.id),
     );
+    const mentionViews = await this.mentionViews(chatId, page);
 
     this.response.cursor(
       res,
       await Promise.all(
-        page.map((message) => this.presenter.present(message, receipts, pinnedAtById)),
+        page.map((message) =>
+          this.presenter.present(
+            message,
+            receipts,
+            pinnedAtById,
+            mentionViews.get(message.id) ?? [],
+          ),
+        ),
       ),
       nextCursor,
     );
@@ -139,8 +154,49 @@ export class MessageController {
 
   private async present(message: MessageRecord, userId: string): Promise<Record<string, unknown>> {
     const context = await this.receipts.contextFor(message.chatId, userId);
+    const views = await this.mentionViews(message.chatId, [message]);
 
-    return this.presenter.present(message, context);
+    return this.presenter.present(message, context, undefined, views.get(message.id) ?? []);
+  }
+
+  private async mentionViews(
+    chatId: string,
+    messages: readonly MessageRecord[],
+  ): Promise<Map<string, MentionView[]>> {
+    if (messages.length === 0) {
+      return new Map();
+    }
+
+    const byMessage = await this.mentions.listForMessages(
+      chatId,
+      messages.map((message) => message.id),
+    );
+    const summaries = await this.users.findSummaries([
+      ...new Set([...byMessage.values()].flat().map((record) => record.mentionedUserId)),
+    ]);
+    const summaryById = new Map(summaries.map((summary) => [summary.id, summary]));
+    const result = new Map<string, MentionView[]>();
+
+    for (const [messageId, records] of byMessage) {
+      result.set(
+        messageId,
+        records.map((record) => {
+          const summary: UserSummary | undefined = summaryById.get(record.mentionedUserId);
+
+          if (!summary) {
+            throw new NotFoundException('Mentioned user not found');
+          }
+
+          return {
+            userId: summary.id,
+            username: summary.username,
+            displayName: summary.displayName,
+          };
+        }),
+      );
+    }
+
+    return result;
   }
 
   private requireAuth(req: Request): { userId: string; deviceId: string } {

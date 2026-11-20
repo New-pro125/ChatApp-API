@@ -5,8 +5,8 @@ import type { AppDatabase } from '@/core/database/database.provider.js';
 import { messageMentions, messages } from '@/core/database/schema/index.js';
 import { PersistenceException } from '@/core/errors/repository.error.js';
 import {
-  mentionSelection,
   MessageMentionMapper,
+  mentionSelection,
 } from '@/modules/messages/data/message-mention.mapper.js';
 import type { MessageMentionRecord } from '@/modules/messages/logic/entities/message-mention-record.js';
 import type {
@@ -31,12 +31,7 @@ export class PostgresMessageMentionRepository implements MessageMentionRepositor
         const existing = await tx
           .select({ id: messageMentions.id, userId: messageMentions.mentionedUserId })
           .from(messageMentions)
-          .where(
-            and(
-              eq(messageMentions.chatId, chatId),
-              eq(messageMentions.messageId, messageId),
-            ),
-          );
+          .where(and(eq(messageMentions.chatId, chatId), eq(messageMentions.messageId, messageId)));
 
         const desired = new Set(userIds);
         const stale = existing.filter((row) => !desired.has(row.userId)).map((row) => row.id);

@@ -29,6 +29,7 @@ import { SelfDestructCleanupWorker } from '@/modules/messages/logic/self-destruc
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 import { ChatController } from '@/modules/messages/web/chat.controller.js';
 import { DraftController } from '@/modules/messages/web/draft.controller.js';
+import { MentionController } from '@/modules/messages/web/mention.controller.js';
 import { MessageController } from '@/modules/messages/web/message.controller.js';
 import { MessagePresenter } from '@/modules/messages/web/message-presenter.service.js';
 import { MultipartMediaParser } from '@/modules/messages/web/multipart-media.parser.js';
@@ -95,6 +96,7 @@ export class MessagesContainer extends Container {
 
     this.bind<ChatController>(MESSAGES_TYPES.ChatController).to(ChatController);
     this.bind<DraftController>(MESSAGES_TYPES.DraftController).to(DraftController);
+    this.bind<MentionController>(MESSAGES_TYPES.MentionController).to(MentionController);
     this.bind<MessagePresenter>(MESSAGES_TYPES.MessagePresenter).to(MessagePresenter);
     this.bind<MultipartMediaParser>(MESSAGES_TYPES.MultipartMediaParser)
       .to(MultipartMediaParser)
