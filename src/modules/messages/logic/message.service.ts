@@ -17,6 +17,7 @@ import type { DraftService } from '@/modules/messages/logic/draft.service.js';
 import type { MediaKind, MessageRecord } from '@/modules/messages/logic/entities/message-record.js';
 import { SelfDestructTimer } from '@/modules/messages/logic/entities/self-destruct-timer.js';
 import type { MediaKindPolicy } from '@/modules/messages/logic/media-kind.policy.js';
+import type { MentionService } from '@/modules/messages/logic/mention.service.js';
 import type { MessagingPolicy } from '@/modules/messages/logic/messaging-policy.service.js';
 import type { ChatRepository } from '@/modules/messages/logic/ports/chat.repository.js';
 import type { ChatMemberRepository } from '@/modules/messages/logic/ports/chat-member.repository.js';
@@ -81,6 +82,7 @@ export class MessageService {
     @inject(CORE_TYPES.MediaAccess) private readonly mediaAccess: MediaAccess,
     @inject(MESSAGES_TYPES.MediaKindPolicy) private readonly kinds: MediaKindPolicy,
     @inject(MESSAGES_TYPES.DraftService) private readonly drafts: DraftService,
+    @inject(MESSAGES_TYPES.MentionService) private readonly mentions: MentionService,
     @inject(CORE_TYPES.Logger) private readonly logger: Logger,
   ) {}
 
@@ -108,6 +110,7 @@ export class MessageService {
       replyToMessageId: input.replyToMessageId ?? null,
       expiresAt,
     });
+    await this.syncMentions(chatId, message);
     await this.clearDraftAfterSend(chatId, userId);
 
     return message;
@@ -285,6 +288,8 @@ export class MessageService {
       throw new NotFoundException('Message not found');
     }
 
+    await this.syncMentions(chatId, edited);
+
     return edited;
   }
 
@@ -298,6 +303,7 @@ export class MessageService {
     const mediaId = message.media?.mediaId ?? null;
 
     await this.messages.markDeleted(chatId, messageId, new Date());
+    await this.mentions.hideForMessage(chatId, messageId);
     await this.pins.removeForMessage(chatId, messageId);
 
     if (mediaId !== null) {
@@ -339,9 +345,23 @@ export class MessageService {
       forwardedFromMessageId: messageId,
       expiresAt,
     });
+    await this.syncMentions(targetChatId, message);
     await this.clearDraftAfterSend(targetChatId, userId);
 
     return message;
+  }
+
+  /** Mention indexing is best effort: never fail a message that was stored. */
+  private async syncMentions(chatId: string, message: MessageRecord): Promise<void> {
+    if (message.type !== 'text' || message.body === null) {
+      return;
+    }
+
+    try {
+      await this.mentions.sync(chatId, message.id, message.body);
+    } catch (error) {
+      this.logger.warn({ err: error, chatId, messageId: message.id }, 'Failed to sync mentions');
+    }
   }
 
   /** A stale draft is recoverable; a failed send is not. Never fail a send for this. */

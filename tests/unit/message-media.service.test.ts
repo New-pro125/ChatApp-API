@@ -118,6 +118,10 @@ function setup(chatType: 'direct' | 'secret' = 'direct') {
     mediaAccess,
     new MediaKindPolicy(),
     { clearOnSend: () => Promise.resolve() } as never,
+    {
+      sync: () => Promise.resolve(),
+      hideForMessage: () => Promise.resolve(),
+    } as never,
     { warn: () => undefined } as never,
   );
   return { service, created, deleted, released, lookups, stores };
@@ -242,6 +246,9 @@ describe('MessageService MediaAccess port timing', () => {
   it('uses a scanner rebound after container boot through the root port', async () => {
     const root = new Container();
     root.bind(CORE_TYPES.Db).toConstantValue({} as never);
+    root.bind(CORE_TYPES.UsernameReader).toConstantValue({
+      findByUsername: () => Promise.resolve(null),
+    } as never);
     root.bind(CORE_TYPES.E2eeDeviceReader).toConstantValue({} as never);
     root.bind(CORE_TYPES.E2eeCiphertextValidator).toConstantValue({} as never);
     root.bind(CORE_TYPES.Logger).toConstantValue({ warn: () => undefined } as never);

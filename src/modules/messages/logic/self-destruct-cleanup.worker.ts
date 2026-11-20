@@ -4,6 +4,7 @@ import type { Logger } from 'pino';
 import type { AppConfig } from '@/core/config/app.config.js';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import type { MediaAccess } from '@/core/media/media-access.port.js';
+import type { MentionService } from '@/modules/messages/logic/mention.service.js';
 import type { MessageRepository } from '@/modules/messages/logic/ports/message.repository.js';
 import type { MessagePinRepository } from '@/modules/messages/logic/ports/message-pin.repository.js';
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
@@ -24,6 +25,7 @@ export class SelfDestructCleanupWorker {
   constructor(
     @inject(MESSAGES_TYPES.MessageRepository) private readonly messages: MessageRepository,
     @inject(MESSAGES_TYPES.MessagePinRepository) private readonly pins: MessagePinRepository,
+    @inject(MESSAGES_TYPES.MentionService) private readonly mentions: MentionService,
     @inject(CORE_TYPES.MediaAccessProvider) private readonly getMediaAccess: () => MediaAccess,
     @inject(CORE_TYPES.RedisClient) private readonly redis: RedisClient,
     @inject(CORE_TYPES.Config) private readonly config: AppConfig,
@@ -77,6 +79,7 @@ export class SelfDestructCleanupWorker {
         // Pins and media are released before the scrub so a release failure
         // leaves the row for the next retry to finish.
         await this.pins.removeForMessage(message.chatId, message.id);
+        await this.mentions.hideForMessage(message.chatId, message.id);
 
         const mediaId = message.media?.mediaId ?? null;
 
