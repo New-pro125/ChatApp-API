@@ -318,4 +318,65 @@ describe('Messaging schema', () => {
     );
     expect(messageIndexes.rows.map((row) => row.indexname)).toContain('messages_expires_at_index');
   });
+
+  it('stores one private, length-checked draft per chat and author', async () => {
+    const user = await auth.createUser();
+    const peer = await auth.createUser();
+    const chatId = await createDirectChat(user.id, peer.id);
+
+    const columns = await app.pool.query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_name = 'message_drafts' ORDER BY ordinal_position`,
+    );
+    expect(columns.rows.map((row) => row.column_name)).toEqual([
+      'chat_id',
+      'user_id',
+      'body',
+      'created_at',
+      'updated_at',
+    ]);
+
+    const constraints = await app.pool.query<{ constraint_name: string }>(
+      `SELECT constraint_name FROM information_schema.table_constraints
+       WHERE table_name = 'message_drafts' ORDER BY constraint_name`,
+    );
+    const names = constraints.rows.map((row) => row.constraint_name);
+    expect(names).toContain('message_drafts_pkey');
+    expect(names).toContain('message_drafts_body_check');
+
+    const foreignKeys = await app.pool.query<{ delete_rule: string }>(
+      `SELECT rc.delete_rule FROM information_schema.referential_constraints rc
+       JOIN information_schema.table_constraints tc ON tc.constraint_name = rc.constraint_name
+       WHERE rc.constraint_schema = 'public' AND tc.table_schema = 'public'
+         AND tc.table_name = 'message_drafts'`,
+    );
+    expect(foreignKeys.rows).toHaveLength(2);
+    expect(foreignKeys.rows.every((row) => row.delete_rule === 'CASCADE')).toBe(true);
+
+    await app.pool.query(
+      `INSERT INTO message_drafts (chat_id, user_id, body) VALUES ($1, $2, $3)`,
+      [chatId, user.id, 'hello'],
+    );
+
+    await expect(
+      app.pool.query(`INSERT INTO message_drafts (chat_id, user_id, body) VALUES ($1, $2, '')`, [
+        chatId,
+        peer.id,
+      ]),
+    ).rejects.toThrow(/message_drafts_body_check/);
+
+    await expect(
+      app.pool.query(
+        `INSERT INTO message_drafts (chat_id, user_id, body) VALUES ($1, $2, $3)`,
+        [chatId, peer.id, 'x'.repeat(4097)],
+      ),
+    ).rejects.toThrow(/message_drafts_body_check/);
+
+    await app.pool.query(`DELETE FROM chats WHERE id = $1`, [chatId]);
+    const remaining = await app.pool.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM message_drafts WHERE chat_id = $1`,
+      [chatId],
+    );
+    expect(remaining.rows[0]?.count).toBe(0);
+  });
 });

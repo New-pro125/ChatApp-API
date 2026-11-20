@@ -124,6 +124,30 @@ export const messagePins = pgTable(
   ],
 );
 
+/**
+ * Per-user unsent text drafts. One row per chat and author, keyed by the
+ * composite primary key. Drafts are never read by the peer and are cleared on
+ * send or explicit delete, so no cleanup worker or extra index is needed.
+ */
+export const messageDrafts = pgTable(
+  'message_drafts',
+  {
+    chatId: uuid('chat_id')
+      .notNull()
+      .references(() => chats.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    body: text('body').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.chatId, table.userId], name: 'message_drafts_pkey' }),
+    check('message_drafts_body_check', sql`char_length(${table.body}) between 1 and 4096`),
+  ],
+);
+
 export const messages = pgTable(
   'messages',
   {
