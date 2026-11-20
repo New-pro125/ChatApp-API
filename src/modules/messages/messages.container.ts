@@ -7,11 +7,13 @@ import { PostgresChatRepository } from '@/modules/messages/data/postgres-chat.re
 import { PostgresChatMemberRepository } from '@/modules/messages/data/postgres-chat-member.repository.js';
 import { PostgresMessageRepository } from '@/modules/messages/data/postgres-message.repository.js';
 import { PostgresMessageDraftRepository } from '@/modules/messages/data/postgres-message-draft.repository.js';
+import { PostgresMessageMentionRepository } from '@/modules/messages/data/postgres-message-mention.repository.js';
 import { PostgresMessagePinRepository } from '@/modules/messages/data/postgres-message-pin.repository.js';
 import { ChatService } from '@/modules/messages/logic/chat.service.js';
 import { DraftService } from '@/modules/messages/logic/draft.service.js';
 import { MediaKindPolicy } from '@/modules/messages/logic/media-kind.policy.js';
 import { MediaReferenceReaderService } from '@/modules/messages/logic/media-reference-reader.service.js';
+import { MentionService } from '@/modules/messages/logic/mention.service.js';
 import { MessageService } from '@/modules/messages/logic/message.service.js';
 import { MessagingPolicy } from '@/modules/messages/logic/messaging-policy.service.js';
 import { PinService } from '@/modules/messages/logic/pin.service.js';
@@ -20,12 +22,14 @@ import type { ChatRepository } from '@/modules/messages/logic/ports/chat.reposit
 import type { ChatMemberRepository } from '@/modules/messages/logic/ports/chat-member.repository.js';
 import type { MessageRepository } from '@/modules/messages/logic/ports/message.repository.js';
 import type { MessageDraftRepository } from '@/modules/messages/logic/ports/message-draft.repository.js';
+import type { MessageMentionRepository } from '@/modules/messages/logic/ports/message-mention.repository.js';
 import type { MessagePinRepository } from '@/modules/messages/logic/ports/message-pin.repository.js';
 import { ReadReceiptService } from '@/modules/messages/logic/read-receipt.service.js';
 import { SelfDestructCleanupWorker } from '@/modules/messages/logic/self-destruct-cleanup.worker.js';
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 import { ChatController } from '@/modules/messages/web/chat.controller.js';
 import { DraftController } from '@/modules/messages/web/draft.controller.js';
+import { MentionController } from '@/modules/messages/web/mention.controller.js';
 import { MessageController } from '@/modules/messages/web/message.controller.js';
 import { MessagePresenter } from '@/modules/messages/web/message-presenter.service.js';
 import { MultipartMediaParser } from '@/modules/messages/web/multipart-media.parser.js';
@@ -59,11 +63,15 @@ export class MessagesContainer extends Container {
     this.bind<MessageDraftRepository>(MESSAGES_TYPES.MessageDraftRepository)
       .to(PostgresMessageDraftRepository)
       .inSingletonScope();
+    this.bind<MessageMentionRepository>(MESSAGES_TYPES.MessageMentionRepository)
+      .to(PostgresMessageMentionRepository)
+      .inSingletonScope();
 
     this.bind<MessagingPolicy>(MESSAGES_TYPES.MessagingPolicy)
       .to(MessagingPolicy)
       .inSingletonScope();
     this.bind<DraftService>(MESSAGES_TYPES.DraftService).to(DraftService).inSingletonScope();
+    this.bind<MentionService>(MESSAGES_TYPES.MentionService).to(MentionService).inSingletonScope();
     this.bind<ReadReceiptService>(MESSAGES_TYPES.ReadReceiptService)
       .to(ReadReceiptService)
       .inSingletonScope();
@@ -88,6 +96,7 @@ export class MessagesContainer extends Container {
 
     this.bind<ChatController>(MESSAGES_TYPES.ChatController).to(ChatController);
     this.bind<DraftController>(MESSAGES_TYPES.DraftController).to(DraftController);
+    this.bind<MentionController>(MESSAGES_TYPES.MentionController).to(MentionController);
     this.bind<MessagePresenter>(MESSAGES_TYPES.MessagePresenter).to(MessagePresenter);
     this.bind<MultipartMediaParser>(MESSAGES_TYPES.MultipartMediaParser)
       .to(MultipartMediaParser)

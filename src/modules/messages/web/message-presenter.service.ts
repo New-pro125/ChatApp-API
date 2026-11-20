@@ -5,6 +5,13 @@ import type { MessageRecord } from '@/modules/messages/logic/entities/message-re
 import type { ReadReceiptContext } from '@/modules/messages/logic/entities/read-receipt-context.js';
 import type { PinIndicators } from '@/modules/messages/logic/ports/message-pin.repository.js';
 
+/** Public mention summary embedded in a message view. */
+export interface MentionView {
+  userId: string;
+  username: string | null;
+  displayName: string;
+}
+
 @injectable()
 export class MessagePresenter {
   constructor(@inject(CORE_TYPES.MediaAccess) private readonly media: MediaAccess) {}
@@ -13,6 +20,7 @@ export class MessagePresenter {
     message: MessageRecord,
     receipts?: ReadReceiptContext,
     pinnedAtById: ReadonlyMap<string, PinIndicators> = new Map(),
+    mentions: readonly MentionView[] = [],
   ): Promise<Record<string, unknown>> {
     const base = {
       id: message.id,
@@ -35,6 +43,7 @@ export class MessagePresenter {
       senderDeviceId: message.senderDeviceId,
       recipientDeviceId: message.recipientDeviceId,
       media: null as Record<string, unknown> | null,
+      mentions: [...mentions],
     };
 
     if (message.media === null || message.deletedAt !== null) {

@@ -12,11 +12,14 @@ import {
   chatParamsSchema,
   editMessageSchema,
   forwardMessageSchema,
+  listMentionsQuerySchema,
   listMessagesQuerySchema,
   markReadSchema,
+  mentionParamsSchema,
   messageParamsSchema,
   openDirectChatSchema,
   pinMessageSchema,
+  readMentionsSchema,
   saveDraftSchema,
   selfDestructPresetSchema,
   sendMediaMessageSchema,
@@ -97,6 +100,13 @@ export const messageSchema = z
         expiresAt: z.iso.datetime(),
       })
       .nullable(),
+    mentions: z.array(
+      z.object({
+        userId: z.uuid(),
+        username: z.string().nullable(),
+        displayName: z.string(),
+      }),
+    ),
   })
   .meta({ id: 'Message' });
 
@@ -131,6 +141,33 @@ export const draftSchema = z
 const draftResponse = successEnvelope(draftSchema, 'MessageDraftResponse');
 const draftOrNullResponse = successEnvelope(draftSchema.nullable(), 'MessageDraftLookupResponse');
 
+export const mentionSchema = z
+  .object({
+    id: z.uuid(),
+    chatId: z.uuid(),
+    messageId: z.uuid(),
+    createdAt: z.iso.datetime(),
+    readAt: z.iso.datetime().nullable(),
+    mentionedBy: participantSummarySchema,
+  })
+  .meta({ id: 'MessageMention' });
+
+const mentionInboxResponse = successEnvelope(
+  z.object({
+    unreadCount: z.number().int().nonnegative(),
+    mentions: z.array(mentionSchema),
+  }),
+  'MentionInboxResponse',
+);
+const mentionReadResponse = successEnvelope(
+  z.object({ id: z.uuid(), readAt: z.iso.datetime() }),
+  'MentionReadResponse',
+);
+const mentionMarkReadResponse = successEnvelope(
+  z.object({ marked: z.number().int().nonnegative() }),
+  'MentionMarkReadResponse',
+);
+
 /**
  * OpenAPI contracts for one-on-one messaging.
  *
@@ -138,6 +175,44 @@ const draftOrNullResponse = successEnvelope(draftSchema.nullable(), 'MessageDraf
  * generated document and runtime validation cannot drift.
  */
 export const messageContracts = {
+  listMentions: {
+    operationId: 'chats.listMentions',
+    tags: ['Mentions'],
+    summary: 'List the caller mentions with unread count',
+    description:
+      'Returns visible mentions newest first with a global unread count. Pass meta.pagination.nextCursor as cursor to continue. No message body is included.',
+    security: bearerSecurity,
+    request: { query: listMentionsQuerySchema },
+    responses: {
+      200: { description: 'A page of mentions', schema: mentionInboxResponse },
+      ...commonErrorResponses,
+    },
+  },
+  readMention: {
+    operationId: 'chats.readMention',
+    tags: ['Mentions'],
+    summary: 'Mark one mention as read',
+    description: 'Only the mentioned user may read a mention. Unknown or hidden ids return 404.',
+    security: bearerSecurity,
+    request: { params: mentionParamsSchema },
+    responses: {
+      200: { description: 'The updated mention', schema: mentionReadResponse },
+      ...commonErrorResponses,
+    },
+  },
+  readMentions: {
+    operationId: 'chats.readMentions',
+    tags: ['Mentions'],
+    summary: 'Mark several mentions as read',
+    description:
+      'Accepts 1–100 ids. Ids not owned or visible are ignored; duplicates are deduplicated.',
+    security: bearerSecurity,
+    request: { body: readMentionsSchema },
+    responses: {
+      200: { description: 'The number of rows marked', schema: mentionMarkReadResponse },
+      ...commonErrorResponses,
+    },
+  },
   openDirect: {
     operationId: 'chats.openDirect',
     tags: ['Chats'],

@@ -51,6 +51,20 @@ export class PostgresUserRepository implements UserRepository {
       .where(inArray(users.id, [...userIds]));
   }
 
+  async findByUsername(username: string): Promise<string | null> {
+    try {
+      const rows = await this.db
+        .select({ id: users.id })
+        .from(users)
+        .where(sql`lower(${users.username}) = ${username.toLowerCase()}`)
+        .limit(1);
+
+      return rows[0]?.id ?? null;
+    } catch (error) {
+      throw new PersistenceException('Failed to find user by username', { cause: error });
+    }
+  }
+
   async findByEmail(email: string): Promise<UserRecord | null> {
     const rows = await this.db
       .select(userSelection)

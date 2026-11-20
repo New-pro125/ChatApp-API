@@ -11,6 +11,7 @@ import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 import type { ChatController } from '@/modules/messages/web/chat.controller.js';
 import type { DraftController } from '@/modules/messages/web/draft.controller.js';
 import { messageContracts } from '@/modules/messages/web/dto/message.openapi.js';
+import type { MentionController } from '@/modules/messages/web/mention.controller.js';
 import type { MessageController } from '@/modules/messages/web/message.controller.js';
 import type { PinController } from '@/modules/messages/web/pin.controller.js';
 
@@ -30,6 +31,39 @@ export class MessagesRouter {
     const routes = new DocumentedRouter(registry, '/api/chats');
     this.router = routes.router;
     this.router.use(scope.handle);
+
+    routes.get(
+      '/mentions',
+      messageContracts.listMentions,
+      this.requireAuth.handle,
+      this.requireVerifiedEmail.handle,
+      (req, res, next) =>
+        req.container.get<MentionController>(MESSAGES_TYPES.MentionController).list(req, res, next),
+    );
+
+    routes.post(
+      '/mentions/:mentionId/read',
+      messageContracts.readMention,
+      this.requireAuth.handle,
+      this.requireVerifiedEmail.handle,
+      this.limiter.handle,
+      (req, res, next) =>
+        req.container
+          .get<MentionController>(MESSAGES_TYPES.MentionController)
+          .readOne(req, res, next),
+    );
+
+    routes.post(
+      '/mentions/read',
+      messageContracts.readMentions,
+      this.requireAuth.handle,
+      this.requireVerifiedEmail.handle,
+      this.limiter.handle,
+      (req, res, next) =>
+        req.container
+          .get<MentionController>(MESSAGES_TYPES.MentionController)
+          .readMany(req, res, next),
+    );
 
     routes.post(
       '/',

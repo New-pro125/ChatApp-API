@@ -15,6 +15,7 @@ export const CORE_TYPES = {
   UserBlockReader: Symbol.for('Core.UserBlockReader'),
   ReadReceiptPreferenceReader: Symbol.for('Core.ReadReceiptPreferenceReader'),
   UserSummaryReader: Symbol.for('Core.UserSummaryReader'),
+  UsernameReader: Symbol.for('Core.UsernameReader'),
   E2eeDeviceReader: Symbol.for('Core.E2eeDeviceReader'),
   E2eeCiphertextValidator: Symbol.for('Core.E2eeCiphertextValidator'),
   MediaAccess: Symbol.for('Core.MediaAccess'),
