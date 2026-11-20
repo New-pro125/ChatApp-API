@@ -380,4 +380,61 @@ describe('Messaging schema', () => {
     );
     expect(remaining.rows[0]?.count).toBe(0);
   });
+
+  it('stores one mention per chat, message, and user with an inbox index', async () => {
+    const sender = await auth.createUser();
+    const target = await auth.createUser();
+    const chatId = await createDirectChat(sender.id, target.id);
+    const inserted = await app.pool.query<{ id: string }>(
+      `INSERT INTO messages (chat_id, sender_id, body) VALUES ($1, $2, $3) RETURNING id`,
+      [chatId, sender.id, 'hi @target'],
+    );
+    const messageId = inserted.rows[0]?.id as string;
+
+    const columns = await app.pool.query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_name = 'message_mentions' ORDER BY ordinal_position`,
+    );
+    expect(columns.rows.map((row) => row.column_name)).toEqual([
+      'id',
+      'chat_id',
+      'message_id',
+      'mentioned_user_id',
+      'created_at',
+      'read_at',
+      'deleted_at',
+    ]);
+
+    const indexes = await app.pool.query<{ indexname: string }>(
+      `SELECT indexname FROM pg_indexes WHERE tablename = 'message_mentions' ORDER BY indexname`,
+    );
+    const names = indexes.rows.map((row) => row.indexname);
+    expect(names).toContain('message_mentions_pkey');
+    expect(names).toContain('message_mentions_chat_message_user_unique');
+    expect(names).toContain('message_mentions_user_inbox_idx');
+    expect(names).toContain('message_mentions_user_unread_idx');
+
+    await app.pool.query(
+      `INSERT INTO message_mentions (chat_id, message_id, mentioned_user_id)
+       VALUES ($1, $2, $3)`,
+      [chatId, messageId, target.id],
+    );
+    await expect(
+      app.pool.query(
+        `INSERT INTO message_mentions (chat_id, message_id, mentioned_user_id)
+         VALUES ($1, $2, $3)`,
+        [chatId, messageId, target.id],
+      ),
+    ).rejects.toThrow(/message_mentions_chat_message_user_unique/);
+
+    await app.pool.query(`DELETE FROM messages WHERE chat_id = $1 AND id = $2`, [
+      chatId,
+      messageId,
+    ]);
+    const remaining = await app.pool.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM message_mentions WHERE chat_id = $1`,
+      [chatId],
+    );
+    expect(remaining.rows[0]?.count).toBe(0);
+  });
 });

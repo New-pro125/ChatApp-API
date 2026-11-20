@@ -39,6 +39,7 @@ export class TestApp {
         email_verification_codes,
         media_objects,
         message_pins,
+        message_mentions,
         messages,
         mfa_challenges,
         mfa_recovery_codes,

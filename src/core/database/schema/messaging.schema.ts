@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   check,
+  foreignKey,
   index,
   integer,
   pgTable,
@@ -255,5 +256,47 @@ export const messages = pgTable(
     index('messages_media_id_index').on(table.mediaId),
     index('messages_sender_device_id_index').on(table.chatId, table.senderDeviceId),
     index('messages_recipient_device_id_index').on(table.chatId, table.recipientDeviceId),
+  ],
+);
+
+/**
+ * Mentions of chat members in cloud text messages. `chat_id` is part of the
+ * key because message ids are unique only within a chat. `deleted_at` hides a
+ * mention when its message is deleted or scrubbed; edit removals hard-delete
+ * so the unique key never blocks a later re-mention.
+ */
+export const messageMentions = pgTable(
+  'message_mentions',
+  {
+    id: uuid('id').notNull().default(sql`uuidv7()`),
+    chatId: uuid('chat_id')
+      .notNull()
+      .references(() => chats.id, { onDelete: 'cascade' }),
+    messageId: uuid('message_id').notNull(),
+    mentionedUserId: uuid('mentioned_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.id], name: 'message_mentions_pkey' }),
+    uniqueIndex('message_mentions_chat_message_user_unique').on(
+      table.chatId,
+      table.messageId,
+      table.mentionedUserId,
+    ),
+    index('message_mentions_user_inbox_idx')
+      .on(table.mentionedUserId, table.id.desc())
+      .where(sql`${table.deletedAt} is null`),
+    index('message_mentions_user_unread_idx')
+      .on(table.mentionedUserId, table.id.desc())
+      .where(sql`${table.deletedAt} is null and ${table.readAt} is null`),
+    foreignKey({
+      columns: [table.chatId, table.messageId],
+      foreignColumns: [messages.chatId, messages.id],
+      name: 'message_mentions_message_fk',
+    }).onDelete('cascade'),
   ],
 );
