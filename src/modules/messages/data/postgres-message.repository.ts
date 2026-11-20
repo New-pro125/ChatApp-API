@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
 import { inject, injectable } from 'inversify';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import type { AppDatabase } from '@/core/database/database.provider.js';
@@ -30,6 +30,11 @@ export class PostgresMessageRepository implements MessageRepository {
 
   constructor(@inject(CORE_TYPES.Db) private readonly db: AppDatabase) {}
 
+  /** Live messages have no deadline or a deadline still in the future. */
+  private notExpired() {
+    return or(isNull(messages.expiresAt), gt(messages.expiresAt, new Date()));
+  }
+
   async create(input: CreateMessageInput): Promise<MessageRecord> {
     try {
       return await this.db.transaction(async (tx) => {
@@ -49,6 +54,7 @@ export class PostgresMessageRepository implements MessageRepository {
             replyToMessageId: input.replyToMessageId ?? null,
             forwardedFromChatId: input.forwardedFromChatId ?? null,
             forwardedFromMessageId: input.forwardedFromMessageId ?? null,
+            expiresAt: input.expiresAt ?? null,
           })
           .returning(messageSelection);
 
@@ -86,6 +92,7 @@ export class PostgresMessageRepository implements MessageRepository {
             ephemeralPublicKey: input.ephemeralPublicKey,
             senderDeviceId: input.senderDeviceId,
             recipientDeviceId: input.recipientDeviceId,
+            expiresAt: input.expiresAt ?? null,
           })
           .returning(messageSelection);
 
@@ -113,7 +120,7 @@ export class PostgresMessageRepository implements MessageRepository {
       const rows = await this.db
         .select(messageSelection)
         .from(messages)
-        .where(and(eq(messages.chatId, chatId), eq(messages.id, id)))
+        .where(and(eq(messages.chatId, chatId), eq(messages.id, id), this.notExpired()))
         .limit(1);
 
       return rows[0] ? this.mapper.toRecord(rows[0]) : null;
@@ -136,6 +143,7 @@ export class PostgresMessageRepository implements MessageRepository {
             eq(messages.chatId, chatId),
             inArray(messages.id, [...ids]),
             isNull(messages.deletedAt),
+            this.notExpired(),
           ),
         );
 
@@ -147,7 +155,7 @@ export class PostgresMessageRepository implements MessageRepository {
 
   async listByChat(chatId: string, query: ListMessagesQuery): Promise<MessageRecord[]> {
     try {
-      const conditions = [eq(messages.chatId, chatId)];
+      const conditions = [eq(messages.chatId, chatId), this.notExpired()];
 
       if (query.beforeId) {
         conditions.push(lt(messages.id, query.beforeId));
@@ -212,7 +220,7 @@ export class PostgresMessageRepository implements MessageRepository {
       const rows = await this.db
         .select({ id: messages.id })
         .from(messages)
-        .where(eq(messages.chatId, chatId))
+        .where(and(eq(messages.chatId, chatId), this.notExpired()))
         .orderBy(desc(messages.id))
         .limit(1);
 
@@ -228,6 +236,7 @@ export class PostgresMessageRepository implements MessageRepository {
         eq(messages.chatId, chatId),
         ne(messages.senderId, readerId),
         isNull(messages.deletedAt),
+        this.notExpired(),
       ];
 
       if (watermarkId !== null) {
@@ -266,6 +275,7 @@ export class PostgresMessageRepository implements MessageRepository {
             inArray(messages.chatId, [...chatIds]),
             ne(messages.senderId, readerId),
             isNull(messages.deletedAt),
+            this.notExpired(),
             or(
               isNull(chatMembers.lastReadMessageId),
               gt(messages.id, chatMembers.lastReadMessageId),
@@ -285,12 +295,63 @@ export class PostgresMessageRepository implements MessageRepository {
       const rows = await this.db
         .select({ id: messages.id })
         .from(messages)
-        .where(and(eq(messages.mediaId, mediaId), isNull(messages.deletedAt)))
+        .where(and(eq(messages.mediaId, mediaId), isNull(messages.deletedAt), this.notExpired()))
         .limit(1);
 
       return rows.length > 0;
     } catch (error) {
       throw new PersistenceException('Failed to check media references', { cause: error });
+    }
+  }
+
+  async listExpired(now: Date, limit: number): Promise<MessageRecord[]> {
+    try {
+      const rows = await this.db
+        .select(messageSelection)
+        .from(messages)
+        .where(and(isNull(messages.deletedAt), lte(messages.expiresAt, now)))
+        .orderBy(asc(messages.expiresAt))
+        .limit(limit)
+        .for('update', { skipLocked: true });
+
+      return rows.map((row) => this.mapper.toRecord(row));
+    } catch (error) {
+      throw new PersistenceException('Failed to list expired messages', { cause: error });
+    }
+  }
+
+  async scrubExpired(chatId: string, id: string, deletedAt: Date): Promise<boolean> {
+    try {
+      const rows = await this.db
+        .update(messages)
+        .set({
+          deletedAt,
+          body: null,
+          ciphertext: null,
+          nonce: null,
+          ephemeralPublicKey: null,
+          senderDeviceId: null,
+          recipientDeviceId: null,
+          mediaId: null,
+          mediaKind: null,
+          caption: null,
+          durationMs: null,
+          width: null,
+          height: null,
+        })
+        .where(
+          and(
+            eq(messages.chatId, chatId),
+            eq(messages.id, id),
+            isNull(messages.deletedAt),
+            lte(messages.expiresAt, new Date()),
+          ),
+        )
+        .returning({ id: messages.id });
+
+      return rows.length > 0;
+    } catch (error) {
+      throw new PersistenceException('Failed to scrub expired message', { cause: error });
     }
   }
 }

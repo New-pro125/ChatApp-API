@@ -1,5 +1,6 @@
 import type { UserSummary } from '@/core/users/user-summary.reader.js';
 import type { ChatRecord, ChatType } from '@/modules/messages/logic/entities/chat-record.js';
+import type { SelfDestructPreset } from '@/modules/messages/logic/entities/self-destruct-preset.js';
 
 /**
  * A chat hydrated with its participants' public display data.
@@ -7,6 +8,7 @@ import type { ChatRecord, ChatType } from '@/modules/messages/logic/entities/cha
  * The full user record never leaves the auth module; only the summary fields
  * needed to render a conversation row are carried across the boundary.
  * `unreadCount` is caller-private and independent of receipt mutuality.
+ * `selfDestructPreset` is the viewer's own setting, never the peer's.
  */
 export class ChatView {
   readonly id: string;
@@ -19,6 +21,7 @@ export class ChatView {
     chat: ChatRecord,
     readonly participants: readonly UserSummary[],
     readonly unreadCount: number,
+    readonly selfDestructPreset: SelfDestructPreset | null = null,
   ) {
     this.id = chat.id;
     this.type = chat.type;

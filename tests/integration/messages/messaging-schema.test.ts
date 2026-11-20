@@ -283,4 +283,39 @@ describe('Messaging schema', () => {
     );
     expect(ordered.rows.map((row) => row.message_id)).toEqual([messageId]);
   });
+
+  it('stores per-member self-destruct presets and per-message expiries', async () => {
+    const memberColumns = await app.pool.query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_name = 'chat_members' ORDER BY ordinal_position`,
+    );
+    expect(memberColumns.rows.map((row) => row.column_name)).toContain('self_destruct_preset');
+
+    const memberChecks = await app.pool.query<{ constraint_name: string }>(
+      `SELECT constraint_name FROM information_schema.table_constraints
+       WHERE table_name = 'chat_members' AND constraint_type = 'CHECK'`,
+    );
+    expect(memberChecks.rows.map((row) => row.constraint_name)).toContain(
+      'chat_members_self_destruct_preset_check',
+    );
+
+    const messageColumns = await app.pool.query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_name = 'messages' ORDER BY ordinal_position`,
+    );
+    expect(messageColumns.rows.map((row) => row.column_name)).toContain('expires_at');
+
+    const messageChecks = await app.pool.query<{ constraint_name: string }>(
+      `SELECT constraint_name FROM information_schema.table_constraints
+       WHERE table_name = 'messages' AND constraint_type = 'CHECK'`,
+    );
+    expect(messageChecks.rows.map((row) => row.constraint_name)).toContain(
+      'messages_expires_at_check',
+    );
+
+    const messageIndexes = await app.pool.query<{ indexname: string }>(
+      `SELECT indexname FROM pg_indexes WHERE tablename = 'messages' ORDER BY indexname`,
+    );
+    expect(messageIndexes.rows.map((row) => row.indexname)).toContain('messages_expires_at_index');
+  });
 });

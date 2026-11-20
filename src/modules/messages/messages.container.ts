@@ -19,6 +19,7 @@ import type { ChatMemberRepository } from '@/modules/messages/logic/ports/chat-m
 import type { MessageRepository } from '@/modules/messages/logic/ports/message.repository.js';
 import type { MessagePinRepository } from '@/modules/messages/logic/ports/message-pin.repository.js';
 import { ReadReceiptService } from '@/modules/messages/logic/read-receipt.service.js';
+import { SelfDestructCleanupWorker } from '@/modules/messages/logic/self-destruct-cleanup.worker.js';
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 import { ChatController } from '@/modules/messages/web/chat.controller.js';
 import { MessageController } from '@/modules/messages/web/message.controller.js';
@@ -63,6 +64,9 @@ export class MessagesContainer extends Container {
     this.bind<PinService>(MESSAGES_TYPES.PinService).to(PinService).inSingletonScope();
     this.bind<PinCleanupWorker>(MESSAGES_TYPES.PinCleanupWorker)
       .to(PinCleanupWorker)
+      .inSingletonScope();
+    this.bind<SelfDestructCleanupWorker>(MESSAGES_TYPES.SelfDestructCleanupWorker)
+      .to(SelfDestructCleanupWorker)
       .inSingletonScope();
     this.bind<MediaKindPolicy>(MESSAGES_TYPES.MediaKindPolicy)
       .to(MediaKindPolicy)

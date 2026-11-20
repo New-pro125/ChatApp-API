@@ -50,6 +50,12 @@ export class MediaContainer extends Container {
       .bind<MediaAccess>(CORE_TYPES.MediaAccess)
       .toDynamicValue(() => this.get<MediaAccessService>(MEDIA_TYPES.MediaAccessService))
       .inSingletonScope();
+    // A provider lets boot-time consumers (such as the cleanup worker) defer the
+    // resolution above until they actually need it, preserving the same guarantee.
+    this.root
+      .bind<() => MediaAccess>(CORE_TYPES.MediaAccessProvider)
+      .toDynamicValue(() => () => this.get<MediaAccessService>(MEDIA_TYPES.MediaAccessService))
+      .inSingletonScope();
 
     this.bind<MediaController>(MEDIA_TYPES.MediaController).to(MediaController);
     this.bind<MediaRouter>(MEDIA_TYPES.MediaRouter).to(MediaRouter).inSingletonScope();

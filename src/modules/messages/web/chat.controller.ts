@@ -11,6 +11,7 @@ import {
   chatParamsSchema,
   markReadSchema,
   openDirectChatSchema,
+  setSelfDestructSchema,
 } from '@/modules/messages/web/dto/message.schemas.js';
 
 @injectable()
@@ -68,6 +69,15 @@ export class ChatController {
     this.response.ok(res, result);
   };
 
+  setSelfDestruct: RequestHandler = async (req, res) => {
+    const user = this.requireUser(req);
+    const { chatId } = chatParamsSchema.parse(req.params);
+    const { preset } = setSelfDestructSchema.parse(req.body);
+    const updated = await this.chats.setSelfDestructPreset(user.id, chatId, preset);
+
+    this.response.ok(res, { preset: updated });
+  };
+
   private requireUser(req: Request): Express.User {
     if (!req.isAuthenticated()) {
       throw new UnauthorizedException();
@@ -82,6 +92,7 @@ export class ChatController {
       type: chat.type,
       title: chat.title,
       unreadCount: chat.unreadCount,
+      selfDestructPreset: chat.selfDestructPreset,
       participants: chat.participants.map((participant) => ({
         userId: participant.id,
         username: participant.username,

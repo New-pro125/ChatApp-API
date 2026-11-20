@@ -17,9 +17,11 @@ import {
   messageParamsSchema,
   openDirectChatSchema,
   pinMessageSchema,
+  selfDestructPresetSchema,
   sendMediaMessageSchema,
   sendMessageSchema,
   sendSecretMessageSchema,
+  setSelfDestructSchema,
 } from '@/modules/messages/web/dto/message.schemas.js';
 
 const bearerSecurity = [{ bearerAuth: [] }] as const;
@@ -44,6 +46,7 @@ export const chatSchema = z
     type: z.enum(['direct', 'secret', 'group', 'channel']),
     title: z.string().nullable(),
     unreadCount: z.number().int().nonnegative(),
+    selfDestructPreset: selfDestructPresetSchema.nullable(),
     participants: z.array(participantSummarySchema),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
@@ -111,6 +114,11 @@ export const pinSchema = z
   .meta({ id: 'MessagePin' });
 
 const pinResponse = successEnvelope(pinSchema, 'MessagePinResponse');
+
+const selfDestructResponse = successEnvelope(
+  z.object({ preset: selfDestructPresetSchema.nullable() }),
+  'SelfDestructSettingResponse',
+);
 
 /**
  * OpenAPI contracts for one-on-one messaging.
@@ -320,6 +328,19 @@ export const messageContracts = {
     request: { params: chatParamsSchema, body: markReadSchema },
     responses: {
       200: { description: 'The updated read watermark', schema: readWatermarkResponse },
+      ...commonErrorResponses,
+    },
+  },
+  setSelfDestruct: {
+    operationId: 'chats.setSelfDestruct',
+    tags: ['Chats'],
+    summary: "Set the caller's self-destruct preset for a chat",
+    description:
+      'Sets or clears only the caller self-destruct preset for this chat. Later messages sent by the caller inherit it; existing messages are unchanged. The peer setting is never returned.',
+    security: bearerSecurity,
+    request: { params: chatParamsSchema, body: setSelfDestructSchema },
+    responses: {
+      200: { description: 'The updated caller setting', schema: selfDestructResponse },
       ...commonErrorResponses,
     },
   },

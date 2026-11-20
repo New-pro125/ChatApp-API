@@ -279,6 +279,7 @@ use the shared `rl:messages:` bucket (120 requests per 15 minutes).
 | `POST`   | `/api/chats`                                     | Open (or retrieve) a direct chat            |
 | `GET`    | `/api/chats`                                     | List the caller's chats, most active first  |
 | `POST`   | `/api/chats/:chatId/read`                        | Advance the caller's read watermark         |
+| `PATCH`  | `/api/chats/:chatId/self-destruct`               | Set or clear the caller's timer preset      |
 | `POST`   | `/api/chats/:chatId/messages/:messageId/pin`     | Pin a message for a chosen duration         |
 | `DELETE` | `/api/chats/:chatId/messages/:messageId/pin`     | Remove the caller's pin (idempotent)        |
 | `GET`    | `/api/chats/:chatId/pins`                        | List the caller's pinned messages           |
@@ -353,6 +354,24 @@ idempotent and returns `204` even when no pin exists.
 `GET /api/chats/:chatId/pins` returns the caller's active pins newest-first as
 full message views; the other participant's pins are never listed or exposed.
 Soft-deleting a message removes all of its pins.
+
+### Self-destruct presets
+
+Each participant controls their own timer per chat. `PATCH /api/chats/:chatId/self-destruct`
+accepts `{ "preset": "24h" | "7d" | "90d" | null }`; `null` clears the caller's timer.
+The response is `{ "preset": ... }`. Changing or clearing the preset affects only later
+messages sent by that caller, never existing messages or the peer's messages.
+
+Every chat returned by `GET /api/chats` includes `selfDestructPreset`, which is the
+caller's own setting for that chat (`null` when off). The peer's setting is never returned,
+and individual message responses never include expiry or countdown metadata.
+
+Elapsed messages are hidden by every read immediately, before cleanup runs. A BullMQ
+repeatable job physically scrubs them every
+`SELF_DESTRUCT_CLEANUP_INTERVAL_MINUTES` (default `5`): pins are removed, message
+content and ciphertext are cleared, media columns are cleared, and the media object is
+deleted only after the last live reference expires. A worker or Redis outage only delays
+storage cleanup; it never makes an elapsed message visible again.
 
 ### Media messages
 
