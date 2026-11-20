@@ -25,6 +25,7 @@ export const messageSelection = {
   editedAt: messages.editedAt,
   deletedAt: messages.deletedAt,
   createdAt: messages.createdAt,
+  expiresAt: messages.expiresAt,
   ciphertext: messages.ciphertext,
   nonce: messages.nonce,
   ephemeralPublicKey: messages.ephemeralPublicKey,
@@ -63,6 +64,7 @@ export class MessageMapper {
             width: row.width,
             height: row.height,
           },
+      row.expiresAt,
     );
   }
 }

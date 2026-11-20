@@ -78,10 +78,15 @@ export const chatMembers = pgTable(
     // that table is partitioned and hard-deletes must not be restricted.
     lastReadMessageId: uuid('last_read_message_id'),
     lastReadAt: timestamp('last_read_at', { withTimezone: true }),
+    selfDestructPreset: text('self_destruct_preset'),
   },
   (table) => [
     primaryKey({ columns: [table.chatId, table.userId], name: 'chat_members_pkey' }),
     check('chat_members_role_check', sql`${table.role} in ('member', 'admin', 'owner')`),
+    check(
+      'chat_members_self_destruct_preset_check',
+      sql`${table.selfDestructPreset} is null or ${table.selfDestructPreset} in ('24h', '7d', '90d')`,
+    ),
     index('chat_members_user_id_index').on(table.userId, table.chatId),
   ],
 );
@@ -143,6 +148,7 @@ export const messages = pgTable(
     editedAt: timestamp('edited_at', { withTimezone: true }),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
     ciphertext: text('ciphertext'),
     nonce: text('nonce'),
     ephemeralPublicKey: text('ephemeral_public_key'),
@@ -203,9 +209,16 @@ export const messages = pgTable(
       'messages_media_height_check',
       sql`${sql.identifier('height')} is null or (${sql.identifier('height')} between 1 and 16384)`,
     ),
+    // Added checks on a partitioned table must use unqualified identifiers so
+    // PostgreSQL can propagate them to every partition.
+    check(
+      'messages_expires_at_check',
+      sql`${sql.identifier('expires_at')} is null or ${sql.identifier('expires_at')} > ${sql.identifier('created_at')}`,
+    ),
     // Non-unique, so it may omit the partition key. Keeps the `sender_id`
     // RESTRICT foreign key check from scanning all sixteen partitions.
     index('messages_sender_id_index').on(table.senderId),
+    index('messages_expires_at_index').on(table.expiresAt),
     // Non-unique too, so the deliberate live-reference lookup can scan all
     // sixteen partitions without carrying the partition key.
     index('messages_media_id_index').on(table.mediaId),

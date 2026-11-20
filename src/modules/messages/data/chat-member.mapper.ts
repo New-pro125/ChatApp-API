@@ -4,6 +4,7 @@ import {
   ChatMemberRecord,
   type ChatMemberRole,
 } from '@/modules/messages/logic/entities/chat-member-record.js';
+import type { SelfDestructPreset } from '@/modules/messages/logic/entities/self-destruct-preset.js';
 
 /** Explicit column selection for the `chat_members` table. */
 export const chatMemberSelection = {
@@ -14,6 +15,7 @@ export const chatMemberSelection = {
   leftAt: chatMembers.leftAt,
   lastReadMessageId: chatMembers.lastReadMessageId,
   lastReadAt: chatMembers.lastReadAt,
+  selfDestructPreset: chatMembers.selfDestructPreset,
 } as const;
 
 export type ChatMemberRow = Pick<
@@ -31,6 +33,7 @@ export class ChatMemberMapper {
       row.leftAt,
       row.lastReadMessageId,
       row.lastReadAt,
+      row.selfDestructPreset as SelfDestructPreset | null,
     );
   }
 }

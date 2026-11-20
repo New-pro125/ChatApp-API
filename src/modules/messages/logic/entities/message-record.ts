@@ -49,5 +49,6 @@ export class MessageRecord {
     readonly senderDeviceId: string | null,
     readonly recipientDeviceId: string | null,
     readonly media: MessageMediaFields | null = null,
+    readonly expiresAt: Date | null = null,
   ) {}
 }

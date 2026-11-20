@@ -2,6 +2,7 @@ import type {
   ChatMemberRecord,
   ChatMemberRole,
 } from '@/modules/messages/logic/entities/chat-member-record.js';
+import type { SelfDestructPreset } from '@/modules/messages/logic/entities/self-destruct-preset.js';
 
 export interface ChatMemberRepository {
   add(chatId: string, userId: string, role?: ChatMemberRole): Promise<ChatMemberRecord>;
@@ -22,4 +23,11 @@ export interface ChatMemberRepository {
    * id. Returns the current membership row, including on a stale no-op.
    */
   markRead(chatId: string, userId: string, messageId: string): Promise<ChatMemberRecord>;
+
+  /** Updates only this user's timer for this chat. */
+  setSelfDestructPreset(
+    chatId: string,
+    userId: string,
+    preset: SelfDestructPreset | null,
+  ): Promise<ChatMemberRecord>;
 }
