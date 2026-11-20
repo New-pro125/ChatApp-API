@@ -10,6 +10,7 @@ export const MESSAGES_TYPES = {
   MessagesRateLimiter: Symbol.for('Messages.MessagesRateLimiter'),
   MessagingPolicy: Symbol.for('Messages.MessagingPolicy'),
   DraftService: Symbol.for('Messages.DraftService'),
+  MentionService: Symbol.for('Messages.MentionService'),
   ReadReceiptService: Symbol.for('Messages.ReadReceiptService'),
   ChatService: Symbol.for('Messages.ChatService'),
   MessageService: Symbol.for('Messages.MessageService'),

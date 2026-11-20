@@ -13,6 +13,7 @@ import { ChatService } from '@/modules/messages/logic/chat.service.js';
 import { DraftService } from '@/modules/messages/logic/draft.service.js';
 import { MediaKindPolicy } from '@/modules/messages/logic/media-kind.policy.js';
 import { MediaReferenceReaderService } from '@/modules/messages/logic/media-reference-reader.service.js';
+import { MentionService } from '@/modules/messages/logic/mention.service.js';
 import { MessageService } from '@/modules/messages/logic/message.service.js';
 import { MessagingPolicy } from '@/modules/messages/logic/messaging-policy.service.js';
 import { PinService } from '@/modules/messages/logic/pin.service.js';
@@ -69,6 +70,7 @@ export class MessagesContainer extends Container {
       .to(MessagingPolicy)
       .inSingletonScope();
     this.bind<DraftService>(MESSAGES_TYPES.DraftService).to(DraftService).inSingletonScope();
+    this.bind<MentionService>(MESSAGES_TYPES.MentionService).to(MentionService).inSingletonScope();
     this.bind<ReadReceiptService>(MESSAGES_TYPES.ReadReceiptService)
       .to(ReadReceiptService)
       .inSingletonScope();
