@@ -13,6 +13,7 @@ import {
 } from '@/core/errors/http.error.js';
 import type { IncomingMediaUpload, MediaAccess } from '@/core/media/media-access.port.js';
 import type { MediaKind, MessageRecord } from '@/modules/messages/logic/entities/message-record.js';
+import { SelfDestructTimer } from '@/modules/messages/logic/entities/self-destruct-timer.js';
 import type { MediaKindPolicy } from '@/modules/messages/logic/media-kind.policy.js';
 import type { MessagingPolicy } from '@/modules/messages/logic/messaging-policy.service.js';
 import type { ChatRepository } from '@/modules/messages/logic/ports/chat.repository.js';
@@ -93,12 +94,15 @@ export class MessageService {
       }
     }
 
+    const expiresAt = await this.expiryFor(chatId, userId);
+
     return this.messages.create({
       chatId,
       senderId: userId,
       body: input.body,
       type: 'text',
       replyToMessageId: input.replyToMessageId ?? null,
+      expiresAt,
     });
   }
 
@@ -121,6 +125,7 @@ export class MessageService {
 
     const asset = await this.mediaAccess.requireReadyOwned(input.mediaId, userId);
     this.kinds.assertMatches(input.kind, asset.contentType);
+    const expiresAt = await this.expiryFor(chatId, userId);
 
     return this.messages.create({
       chatId,
@@ -136,6 +141,7 @@ export class MessageService {
         height: input.height ?? null,
       },
       replyToMessageId: input.replyToMessageId ?? null,
+      expiresAt,
     });
   }
 
@@ -165,6 +171,7 @@ export class MessageService {
       body: input.body,
       assertComplete: input.assertComplete,
     });
+    const expiresAt = await this.expiryFor(chatId, userId);
 
     return this.messages.create({
       chatId,
@@ -180,6 +187,7 @@ export class MessageService {
         height: input.height ?? null,
       },
       replyToMessageId: input.replyToMessageId ?? null,
+      expiresAt,
     });
   }
 
@@ -217,6 +225,7 @@ export class MessageService {
     }
 
     this.ciphertextValidator.assertCiphertextInput(input);
+    const expiresAt = await this.expiryFor(chatId, userId);
 
     return this.messages.createSecret({
       chatId,
@@ -226,6 +235,7 @@ export class MessageService {
       ciphertext: input.ciphertext,
       nonce: input.nonce,
       ephemeralPublicKey: input.ephemeralPublicKey,
+      expiresAt,
     });
   }
 
@@ -304,6 +314,8 @@ export class MessageService {
       throw new BadRequestException('Deleted messages cannot be forwarded');
     }
 
+    const expiresAt = await this.expiryFor(targetChatId, userId);
+
     return this.messages.create({
       chatId: targetChatId,
       senderId: userId,
@@ -312,7 +324,15 @@ export class MessageService {
       ...(original.media === null ? {} : { media: original.media }),
       forwardedFromChatId: sourceChatId,
       forwardedFromMessageId: messageId,
+      expiresAt,
     });
+  }
+
+  /** Resolves the sender's current preset in the target chat at send time. */
+  private async expiryFor(chatId: string, userId: string): Promise<Date | null> {
+    const membership = await this.members.find(chatId, userId);
+
+    return SelfDestructTimer.expiryFor(membership?.selfDestructPreset ?? null);
   }
 
   /** Rejects ciphertext chats from plaintext mutation and send paths. */
