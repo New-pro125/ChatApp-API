@@ -11,6 +11,7 @@ import type { ReadReceiptPreferenceReader } from '@/core/privacy/read-receipt-pr
 import type { UserBlockReader } from '@/core/privacy/user-block.reader.js';
 import type { UserPrivacyReader } from '@/core/privacy/user-privacy.reader.js';
 import type { UserSummaryReader } from '@/core/users/user-summary.reader.js';
+import type { UsernameReader } from '@/core/users/username.reader.js';
 import { AUTH_TYPES } from '@/modules/auth/auth.types.js';
 import { AesMfaSecretCipher } from '@/modules/auth/data/aes-mfa-secret.cipher.js';
 import { Argon2PasswordHasher } from '@/modules/auth/data/argon2-password.hasher.js';
@@ -273,6 +274,7 @@ export class AuthContainer extends Container {
       .bind<ReadReceiptPreferenceReader>(CORE_TYPES.ReadReceiptPreferenceReader)
       .toConstantValue(receiptReader);
     this.root.bind<UserSummaryReader>(CORE_TYPES.UserSummaryReader).toConstantValue(summaryReader);
+    this.root.bind<UsernameReader>(CORE_TYPES.UsernameReader).toConstantValue(summaryReader);
     this.root.bind<RequireBearerAuthMiddleware>(CORE_TYPES.RequireAuth).toConstantValue(middleware);
     this.root
       .bind<RequireVerifiedEmailMiddleware>(CORE_TYPES.RequireVerifiedEmail)

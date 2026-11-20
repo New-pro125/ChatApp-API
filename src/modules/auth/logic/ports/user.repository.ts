@@ -19,6 +19,8 @@ export interface UserRepository {
   findById(id: string): Promise<UserRecord | null>;
   /** Public display fields for a set of users, in no particular order. */
   findSummaries(userIds: readonly string[]): Promise<UserSummary[]>;
+  /** User id for a case-insensitive username match, or null. */
+  findByUsername(username: string): Promise<string | null>;
   findByEmail(email: string): Promise<UserRecord | null>;
   create(input: CreateUserInput): Promise<UserRecord>;
   updateProfile(id: string, input: UpdateProfileInput): Promise<UserRecord | null>;
