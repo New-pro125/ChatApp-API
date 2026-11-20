@@ -81,7 +81,10 @@ function setup(chatType: 'direct' | 'secret' = 'direct') {
     requireMember: () => Promise.resolve(undefined),
     assertChatUnblocked: () => Promise.resolve(undefined),
   };
-  const members = { listByChat: () => Promise.resolve([]) };
+  const members = {
+    find: () => Promise.resolve(null),
+    listByChat: () => Promise.resolve([]),
+  };
   const mediaAccess = {
     requireReadyOwned: (mediaId: string) => {
       lookups.push(mediaId);
@@ -304,6 +307,7 @@ describe('MessageService MediaAccess port timing', () => {
       findById: () => Promise.resolve({ id: 'chat1', type: 'direct' }),
     } as unknown as ChatRepository);
     messages.rebind<ChatMemberRepository>(MESSAGES_TYPES.ChatMemberRepository).toConstantValue({
+      find: () => Promise.resolve(null),
       listByChat: () => Promise.resolve([]),
     } as unknown as ChatMemberRepository);
 

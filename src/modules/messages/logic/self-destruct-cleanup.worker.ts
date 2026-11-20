@@ -24,7 +24,7 @@ export class SelfDestructCleanupWorker {
   constructor(
     @inject(MESSAGES_TYPES.MessageRepository) private readonly messages: MessageRepository,
     @inject(MESSAGES_TYPES.MessagePinRepository) private readonly pins: MessagePinRepository,
-    @inject(CORE_TYPES.MediaAccess) private readonly mediaAccess: MediaAccess,
+    @inject(CORE_TYPES.MediaAccessProvider) private readonly getMediaAccess: () => MediaAccess,
     @inject(CORE_TYPES.RedisClient) private readonly redis: RedisClient,
     @inject(CORE_TYPES.Config) private readonly config: AppConfig,
     @inject(CORE_TYPES.Logger) private readonly logger: Logger,
@@ -81,7 +81,7 @@ export class SelfDestructCleanupWorker {
         const mediaId = message.media?.mediaId ?? null;
 
         if (mediaId !== null) {
-          await this.mediaAccess.releaseIfUnreferenced(mediaId);
+          await this.getMediaAccess().releaseIfUnreferenced(mediaId);
         }
 
         if (await this.messages.scrubExpired(message.chatId, message.id, new Date())) {
