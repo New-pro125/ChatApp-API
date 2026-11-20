@@ -9,6 +9,7 @@ import { PostgresMessageDraftRepository } from '@/modules/messages/data/postgres
 import { PostgresMessageRepository } from '@/modules/messages/data/postgres-message.repository.js';
 import { PostgresMessagePinRepository } from '@/modules/messages/data/postgres-message-pin.repository.js';
 import { ChatService } from '@/modules/messages/logic/chat.service.js';
+import { DraftService } from '@/modules/messages/logic/draft.service.js';
 import { MediaKindPolicy } from '@/modules/messages/logic/media-kind.policy.js';
 import { MediaReferenceReaderService } from '@/modules/messages/logic/media-reference-reader.service.js';
 import { MessageService } from '@/modules/messages/logic/message.service.js';
@@ -24,6 +25,7 @@ import { ReadReceiptService } from '@/modules/messages/logic/read-receipt.servic
 import { SelfDestructCleanupWorker } from '@/modules/messages/logic/self-destruct-cleanup.worker.js';
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 import { ChatController } from '@/modules/messages/web/chat.controller.js';
+import { DraftController } from '@/modules/messages/web/draft.controller.js';
 import { MessageController } from '@/modules/messages/web/message.controller.js';
 import { MessagePresenter } from '@/modules/messages/web/message-presenter.service.js';
 import { MultipartMediaParser } from '@/modules/messages/web/multipart-media.parser.js';
@@ -61,6 +63,7 @@ export class MessagesContainer extends Container {
     this.bind<MessagingPolicy>(MESSAGES_TYPES.MessagingPolicy)
       .to(MessagingPolicy)
       .inSingletonScope();
+    this.bind<DraftService>(MESSAGES_TYPES.DraftService).to(DraftService).inSingletonScope();
     this.bind<ReadReceiptService>(MESSAGES_TYPES.ReadReceiptService)
       .to(ReadReceiptService)
       .inSingletonScope();
@@ -84,6 +87,7 @@ export class MessagesContainer extends Container {
       .toConstantValue(this.get<MediaReferenceReaderService>(MESSAGES_TYPES.MediaReferenceReader));
 
     this.bind<ChatController>(MESSAGES_TYPES.ChatController).to(ChatController);
+    this.bind<DraftController>(MESSAGES_TYPES.DraftController).to(DraftController);
     this.bind<MessagePresenter>(MESSAGES_TYPES.MessagePresenter).to(MessagePresenter);
     this.bind<MultipartMediaParser>(MESSAGES_TYPES.MultipartMediaParser)
       .to(MultipartMediaParser)

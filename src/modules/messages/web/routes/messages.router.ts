@@ -9,6 +9,7 @@ import { DocumentedRouter } from '@/core/http/openapi/documented-router.js';
 import type { OpenApiRegistry } from '@/core/http/openapi/openapi.registry.js';
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 import type { ChatController } from '@/modules/messages/web/chat.controller.js';
+import type { DraftController } from '@/modules/messages/web/draft.controller.js';
 import { messageContracts } from '@/modules/messages/web/dto/message.openapi.js';
 import type { MessageController } from '@/modules/messages/web/message.controller.js';
 import type { PinController } from '@/modules/messages/web/pin.controller.js';
@@ -79,6 +80,36 @@ export class MessagesRouter {
         req.container
           .get<ChatController>(MESSAGES_TYPES.ChatController)
           .setSelfDestruct(req, res, next),
+    );
+
+    routes.put(
+      '/:chatId/draft',
+      messageContracts.saveDraft,
+      this.requireAuth.handle,
+      this.requireVerifiedEmail.handle,
+      this.limiter.handle,
+      (req, res, next) =>
+        req.container.get<DraftController>(MESSAGES_TYPES.DraftController).save(req, res, next),
+    );
+
+    routes.get(
+      '/:chatId/draft',
+      messageContracts.getDraft,
+      this.requireAuth.handle,
+      this.requireVerifiedEmail.handle,
+      this.limiter.handle,
+      (req, res, next) =>
+        req.container.get<DraftController>(MESSAGES_TYPES.DraftController).get(req, res, next),
+    );
+
+    routes.delete(
+      '/:chatId/draft',
+      messageContracts.deleteDraft,
+      this.requireAuth.handle,
+      this.requireVerifiedEmail.handle,
+      this.limiter.handle,
+      (req, res, next) =>
+        req.container.get<DraftController>(MESSAGES_TYPES.DraftController).remove(req, res, next),
     );
 
     routes.post(

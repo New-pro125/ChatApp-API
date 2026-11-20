@@ -280,6 +280,9 @@ use the shared `rl:messages:` bucket (120 requests per 15 minutes).
 | `GET`    | `/api/chats`                                     | List the caller's chats, most active first  |
 | `POST`   | `/api/chats/:chatId/read`                        | Advance the caller's read watermark         |
 | `PATCH`  | `/api/chats/:chatId/self-destruct`               | Set or clear the caller's timer preset      |
+| `PUT`    | `/api/chats/:chatId/draft`                       | Save the caller's unsent text draft         |
+| `GET`    | `/api/chats/:chatId/draft`                       | Read the caller's draft (or `null`)         |
+| `DELETE` | `/api/chats/:chatId/draft`                       | Clear the caller's draft (idempotent)       |
 | `POST`   | `/api/chats/:chatId/messages/:messageId/pin`     | Pin a message for a chosen duration         |
 | `DELETE` | `/api/chats/:chatId/messages/:messageId/pin`     | Remove the caller's pin (idempotent)        |
 | `GET`    | `/api/chats/:chatId/pins`                        | List the caller's pinned messages           |
