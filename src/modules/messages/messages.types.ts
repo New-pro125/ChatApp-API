@@ -3,6 +3,7 @@ export const MESSAGES_TYPES = {
   ChatMemberRepository: Symbol.for('Messages.ChatMemberRepository'),
   MessageRepository: Symbol.for('Messages.MessageRepository'),
   MessagePinRepository: Symbol.for('Messages.MessagePinRepository'),
+  MessageDraftRepository: Symbol.for('Messages.MessageDraftRepository'),
 
   RequestScope: Symbol.for('Messages.RequestScope'),
   MessagesRateLimiter: Symbol.for('Messages.MessagesRateLimiter'),
