@@ -1,6 +1,6 @@
 import { inject, injectable } from 'inversify';
 import { E2eeNotAllowedException, NotChatMemberException } from '@/core/errors/domain.error.js';
-import { MessageDraftRecord } from '@/modules/messages/logic/entities/message-draft-record.js';
+import type { MessageDraftRecord } from '@/modules/messages/logic/entities/message-draft-record.js';
 import type { MessagingPolicy } from '@/modules/messages/logic/messaging-policy.service.js';
 import type { ChatRepository } from '@/modules/messages/logic/ports/chat.repository.js';
 import type { MessageDraftRepository } from '@/modules/messages/logic/ports/message-draft.repository.js';

@@ -3,8 +3,8 @@ import { inject, injectable } from 'inversify';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import { UnauthorizedException } from '@/core/errors/http.error.js';
 import type { ApiResponse } from '@/core/http/response/api-response.js';
-import type { MessageDraftRecord } from '@/modules/messages/logic/entities/message-draft-record.js';
 import type { DraftService } from '@/modules/messages/logic/draft.service.js';
+import type { MessageDraftRecord } from '@/modules/messages/logic/entities/message-draft-record.js';
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 import { chatParamsSchema, saveDraftSchema } from '@/modules/messages/web/dto/message.schemas.js';
 

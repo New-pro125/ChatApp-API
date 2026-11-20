@@ -41,7 +41,9 @@ describe('message drafts', () => {
   it('saves, reads, overwrites, and deletes a draft', async () => {
     const { alice, chatId } = await pair();
 
-    expect(expectSuccess(await app.request.get(draftUrl(chatId)).set(alice.headers), 200)).toBeNull();
+    expect(
+      expectSuccess(await app.request.get(draftUrl(chatId)).set(alice.headers), 200),
+    ).toBeNull();
 
     const first = expectSuccess<DraftResponse>(
       await app.request.put(draftUrl(chatId)).set(alice.headers).send({ body: 'first' }),
@@ -63,7 +65,9 @@ describe('message drafts', () => {
 
     expectNoContent(await app.request.delete(draftUrl(chatId)).set(alice.headers));
     expectNoContent(await app.request.delete(draftUrl(chatId)).set(alice.headers));
-    expect(expectSuccess(await app.request.get(draftUrl(chatId)).set(alice.headers), 200)).toBeNull();
+    expect(
+      expectSuccess(await app.request.get(draftUrl(chatId)).set(alice.headers), 200),
+    ).toBeNull();
   });
 
   it('keeps drafts private to their author', async () => {
@@ -150,7 +154,10 @@ describe('message drafts', () => {
       'VALIDATION_ERROR',
     );
     expectError(
-      await app.request.put(draftUrl(chatId)).set(bob.headers).send({ body: 'x'.repeat(4097) }),
+      await app.request
+        .put(draftUrl(chatId))
+        .set(bob.headers)
+        .send({ body: 'x'.repeat(4097) }),
       400,
       'VALIDATION_ERROR',
     );
@@ -159,11 +166,7 @@ describe('message drafts', () => {
       400,
       'VALIDATION_ERROR',
     );
-    expectError(
-      await app.request.put(draftUrl(chatId)).send({ body: 'x' }),
-      401,
-      'UNAUTHORIZED',
-    );
+    expectError(await app.request.put(draftUrl(chatId)).send({ body: 'x' }), 401, 'UNAUTHORIZED');
 
     const unverified = await fixture.unverifiedUser('Unverified');
     await fixture.openDirectChat(unverified.id, bob.headers);
@@ -188,7 +191,9 @@ describe('message drafts', () => {
       201,
     );
 
-    expect(expectSuccess(await app.request.get(draftUrl(chatId)).set(alice.headers), 200)).toBeNull();
+    expect(
+      expectSuccess(await app.request.get(draftUrl(chatId)).set(alice.headers), 200),
+    ).toBeNull();
     expect(
       expectSuccess<DraftResponse>(await app.request.get(draftUrl(chatId)).set(bob.headers), 200)
         .body,

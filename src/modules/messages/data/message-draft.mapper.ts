@@ -15,12 +15,6 @@ export type DraftRow = Pick<InferSelectModel<typeof messageDrafts>, keyof typeof
 
 export class MessageDraftMapper {
   toRecord(row: DraftRow): MessageDraftRecord {
-    return new MessageDraftRecord(
-      row.chatId,
-      row.userId,
-      row.body,
-      row.createdAt,
-      row.updatedAt,
-    );
+    return new MessageDraftRecord(row.chatId, row.userId, row.body, row.createdAt, row.updatedAt);
   }
 }

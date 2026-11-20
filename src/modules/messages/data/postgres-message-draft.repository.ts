@@ -4,8 +4,11 @@ import { CORE_TYPES } from '@/core/container/core.types.js';
 import type { AppDatabase } from '@/core/database/database.provider.js';
 import { messageDrafts } from '@/core/database/schema/index.js';
 import { PersistenceException } from '@/core/errors/repository.error.js';
-import { MessageDraftMapper, draftSelection } from '@/modules/messages/data/message-draft.mapper.js';
-import { MessageDraftRecord } from '@/modules/messages/logic/entities/message-draft-record.js';
+import {
+  draftSelection,
+  MessageDraftMapper,
+} from '@/modules/messages/data/message-draft.mapper.js';
+import type { MessageDraftRecord } from '@/modules/messages/logic/entities/message-draft-record.js';
 import type { MessageDraftRepository } from '@/modules/messages/logic/ports/message-draft.repository.js';
 
 @injectable()

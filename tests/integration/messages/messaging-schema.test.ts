@@ -366,10 +366,11 @@ describe('Messaging schema', () => {
     ).rejects.toThrow(/message_drafts_body_check/);
 
     await expect(
-      app.pool.query(
-        `INSERT INTO message_drafts (chat_id, user_id, body) VALUES ($1, $2, $3)`,
-        [chatId, peer.id, 'x'.repeat(4097)],
-      ),
+      app.pool.query(`INSERT INTO message_drafts (chat_id, user_id, body) VALUES ($1, $2, $3)`, [
+        chatId,
+        peer.id,
+        'x'.repeat(4097),
+      ]),
     ).rejects.toThrow(/message_drafts_body_check/);
 
     await app.pool.query(`DELETE FROM chats WHERE id = $1`, [chatId]);
