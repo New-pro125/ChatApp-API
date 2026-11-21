@@ -241,6 +241,16 @@ export class MessagesRouter {
         req.container.get<MessageController>(MESSAGES_TYPES.MessageController).list(req, res, next),
     );
 
+    routes.get(
+      '/:chatId/messages/search',
+      messageContracts.searchMessages,
+      this.requireAuth.handle,
+      this.requireVerifiedEmail.handle,
+      this.limiter.handle,
+      (req, res, next) =>
+        req.container.get<MessageController>(MESSAGES_TYPES.MessageController).search(req, res, next),
+    );
+
     routes.patch(
       '/:chatId/messages/:messageId',
       messageContracts.editMessage,

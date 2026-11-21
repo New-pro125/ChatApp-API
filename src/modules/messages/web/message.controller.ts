@@ -10,6 +10,7 @@ import type { MentionService } from '@/modules/messages/logic/mention.service.js
 import type { MessageService } from '@/modules/messages/logic/message.service.js';
 import type { PinService } from '@/modules/messages/logic/pin.service.js';
 import type { ReadReceiptService } from '@/modules/messages/logic/read-receipt.service.js';
+import type { SearchService } from '@/modules/messages/logic/search.service.js';
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 import {
   chatParamsSchema,
@@ -17,6 +18,7 @@ import {
   forwardMessageSchema,
   listMessagesQuerySchema,
   messageParamsSchema,
+  searchMessagesQuerySchema,
   sendMediaMessageSchema,
   sendMessageSchema,
   sendSecretMessageSchema,
@@ -31,6 +33,7 @@ import type { MultipartMediaParser } from '@/modules/messages/web/multipart-medi
 export class MessageController {
   constructor(
     @inject(MESSAGES_TYPES.MessageService) private readonly messages: MessageService,
+    @inject(MESSAGES_TYPES.SearchService) private readonly searchService: SearchService,
     @inject(MESSAGES_TYPES.PinService) private readonly pins: PinService,
     @inject(MESSAGES_TYPES.ReadReceiptService) private readonly receipts: ReadReceiptService,
     @inject(MESSAGES_TYPES.MessagePresenter) private readonly presenter: MessagePresenter,
@@ -99,30 +102,24 @@ export class MessageController {
       limit: query.limit + 1,
       beforeId: query.cursor,
     });
-    const receipts = await this.receipts.contextFor(chatId, userId);
-    const page = rows.slice(0, query.limit);
-    const nextCursor = rows.length > query.limit ? (page.at(-1)?.id ?? null) : null;
-    const pinnedAtById = await this.pins.listPinnedFor(
-      chatId,
-      userId,
-      page.map((message) => message.id),
-    );
-    const mentionViews = await this.mentionViews(chatId, page);
+    const page = await this.presentPage(chatId, userId, rows, query.limit);
 
-    this.response.cursor(
-      res,
-      await Promise.all(
-        page.map((message) =>
-          this.presenter.present(
-            message,
-            receipts,
-            pinnedAtById,
-            mentionViews.get(message.id) ?? [],
-          ),
-        ),
-      ),
-      nextCursor,
-    );
+    this.response.cursor(res, page.views, page.nextCursor);
+  };
+
+  search: RequestHandler = async (req, res) => {
+    const { userId } = this.requireAuth(req);
+    const { chatId } = chatParamsSchema.parse(req.params);
+    const query = searchMessagesQuerySchema.parse(req.query);
+
+    const rows = await this.searchService.search(userId, chatId, {
+      q: query.q,
+      limit: query.limit + 1,
+      beforeId: query.cursor,
+    });
+    const page = await this.presentPage(chatId, userId, rows, query.limit);
+
+    this.response.cursor(res, page.views, page.nextCursor);
   };
 
   edit: RequestHandler = async (req, res) => {
@@ -151,6 +148,37 @@ export class MessageController {
 
     this.response.created(res, await this.present(message, userId));
   };
+
+  private async presentPage(
+    chatId: string,
+    userId: string,
+    rows: MessageRecord[],
+    limit: number,
+  ): Promise<{ views: Record<string, unknown>[]; nextCursor: string | null }> {
+    const receipts = await this.receipts.contextFor(chatId, userId);
+    const page = rows.slice(0, limit);
+    const nextCursor = rows.length > limit ? (page.at(-1)?.id ?? null) : null;
+    const pinnedAtById = await this.pins.listPinnedFor(
+      chatId,
+      userId,
+      page.map((message) => message.id),
+    );
+    const mentionViews = await this.mentionViews(chatId, page);
+
+    return {
+      views: await Promise.all(
+        page.map((message) =>
+          this.presenter.present(
+            message,
+            receipts,
+            pinnedAtById,
+            mentionViews.get(message.id) ?? [],
+          ),
+        ),
+      ),
+      nextCursor,
+    };
+  }
 
   private async present(message: MessageRecord, userId: string): Promise<Record<string, unknown>> {
     const context = await this.receipts.contextFor(message.chatId, userId);
