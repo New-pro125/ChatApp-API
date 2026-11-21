@@ -16,6 +16,7 @@ import { MediaReferenceReaderService } from '@/modules/messages/logic/media-refe
 import { MentionService } from '@/modules/messages/logic/mention.service.js';
 import { MessageService } from '@/modules/messages/logic/message.service.js';
 import { MessagingPolicy } from '@/modules/messages/logic/messaging-policy.service.js';
+import { MuteService } from '@/modules/messages/logic/mute.service.js';
 import { PinService } from '@/modules/messages/logic/pin.service.js';
 import { PinCleanupWorker } from '@/modules/messages/logic/pin-cleanup.worker.js';
 import type { ChatRepository } from '@/modules/messages/logic/ports/chat.repository.js';
@@ -72,6 +73,7 @@ export class MessagesContainer extends Container {
       .inSingletonScope();
     this.bind<DraftService>(MESSAGES_TYPES.DraftService).to(DraftService).inSingletonScope();
     this.bind<MentionService>(MESSAGES_TYPES.MentionService).to(MentionService).inSingletonScope();
+    this.bind<MuteService>(MESSAGES_TYPES.MuteService).to(MuteService).inSingletonScope();
     this.bind<ReadReceiptService>(MESSAGES_TYPES.ReadReceiptService)
       .to(ReadReceiptService)
       .inSingletonScope();
