@@ -7,6 +7,7 @@ import { UniqueConstraintException } from '@/core/errors/repository.error.js';
 import type { UserSummary, UserSummaryReader } from '@/core/users/user-summary.reader.js';
 import type { ChatRecord } from '@/modules/messages/logic/entities/chat-record.js';
 import { ChatView } from '@/modules/messages/logic/entities/chat-view.js';
+import { MuteState } from '@/modules/messages/logic/entities/mute-state.js';
 import type { SelfDestructPreset } from '@/modules/messages/logic/entities/self-destruct-preset.js';
 import type { MessagingPolicy } from '@/modules/messages/logic/messaging-policy.service.js';
 import type { ChatRepository } from '@/modules/messages/logic/ports/chat.repository.js';
@@ -119,6 +120,11 @@ export class ChatService {
         .filter((membership) => membership.userId === userId)
         .map((membership) => [membership.chatId, membership.selfDestructPreset]),
     );
+    const viewerMuteByChat = new Map(
+      memberships
+        .filter((membership) => membership.userId === userId)
+        .map((membership) => [membership.chatId, MuteState.from(membership, new Date())]),
+    );
     const userIds = [...new Set(memberships.map((membership) => membership.userId))];
     const summaries = await this.users.findSummaries(userIds);
     const summariesById = new Map(summaries.map((summary) => [summary.id, summary]));
@@ -141,6 +147,8 @@ export class ChatService {
           byChat.get(chat.id) ?? [],
           unread.get(chat.id) ?? 0,
           viewerPresetByChat.get(chat.id) ?? null,
+          viewerMuteByChat.get(chat.id)?.muted ?? false,
+          viewerMuteByChat.get(chat.id)?.expiresAt ?? null,
         ),
     );
   }
@@ -230,11 +238,15 @@ export class ChatService {
     const unread = await this.messages.countUnreadByChats(viewerId, [chat.id]);
     const viewer = memberships.find((member) => member.userId === viewerId);
 
+    const mute = viewer ? MuteState.from(viewer, new Date()) : null;
+
     return new ChatView(
       chat,
       participants,
       unread.get(chat.id) ?? 0,
       viewer?.selfDestructPreset ?? null,
+      mute?.muted ?? false,
+      mute?.expiresAt ?? null,
     );
   }
 

@@ -8,7 +8,9 @@ import type { SelfDestructPreset } from '@/modules/messages/logic/entities/self-
  * The full user record never leaves the auth module; only the summary fields
  * needed to render a conversation row are carried across the boundary.
  * `unreadCount` is caller-private and independent of receipt mutuality.
- * `selfDestructPreset` is the viewer's own setting, never the peer's.
+ * `selfDestructPreset` is the viewer's own setting, never the peer's. `muted`
+ * and `muteExpiresAt` are likewise the viewer's own mute setting, never the
+ * peer's.
  */
 export class ChatView {
   readonly id: string;
@@ -22,6 +24,8 @@ export class ChatView {
     readonly participants: readonly UserSummary[],
     readonly unreadCount: number,
     readonly selfDestructPreset: SelfDestructPreset | null = null,
+    readonly muted = false,
+    readonly muteExpiresAt: Date | null = null,
   ) {
     this.id = chat.id;
     this.type = chat.type;

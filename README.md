@@ -279,6 +279,7 @@ use the shared `rl:messages:` bucket (120 requests per 15 minutes).
 | `POST`   | `/api/chats`                                     | Open (or retrieve) a direct chat             |
 | `GET`    | `/api/chats`                                     | List the caller's chats, most active first   |
 | `POST`   | `/api/chats/:chatId/read`                        | Advance the caller's read watermark          |
+| `PATCH`  | `/api/chats/:chatId/mute`                        | Set or clear the caller's chat mute          |
 | `PATCH`  | `/api/chats/:chatId/self-destruct`               | Set or clear the caller's timer preset       |
 | `PUT`    | `/api/chats/:chatId/draft`                       | Save the caller's unsent text draft          |
 | `GET`    | `/api/chats/:chatId/draft`                       | Read the caller's draft (or `null`)          |
@@ -296,6 +297,13 @@ use the shared `rl:messages:` bucket (120 requests per 15 minutes).
 | `POST`   | `/api/chats/:chatId/messages/:messageId/forward` | Forward a message into another chat          |
 | `POST`   | `/api/chats/:chatId/messages/media`              | Attach a ready `mediaId` as a media message  |
 | `POST`   | `/api/chats/:chatId/messages/media/upload`       | Multipart upload-and-send in one request     |
+
+`PATCH /api/chats/:chatId/mute` accepts
+`{ "preset": "8h" | "7d" | "forever" | null }`. `"8h"` and `"7d"` expire
+automatically; `"forever"` stays active until cleared; `null` unmutes. The
+setting is private to the caller and appears as `muted` and `muteExpiresAt` on
+chat responses. Muting does not stop message delivery, change unread counts, or
+suppress mentions.
 
 `POST /api/chats` accepts `{ "participantId": "<uuid>" }`. It returns `201` for a
 new chat and `200` for the existing pair, and every chat response embeds public

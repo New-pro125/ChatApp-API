@@ -93,6 +93,8 @@ export class ChatController {
       title: chat.title,
       unreadCount: chat.unreadCount,
       selfDestructPreset: chat.selfDestructPreset,
+      muted: chat.muted,
+      muteExpiresAt: chat.muteExpiresAt?.toISOString() ?? null,
       participants: chat.participants.map((participant) => ({
         userId: participant.id,
         username: participant.username,

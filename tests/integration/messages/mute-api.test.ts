@@ -96,4 +96,48 @@ describe('mute chat API', () => {
       'UNAUTHORIZED',
     );
   });
+
+  it('projects mute state only to the caller and hides expired mutes', async () => {
+    const alice = await fixture.verifiedUser('Alice');
+    const bob = await fixture.verifiedUser('Bob');
+    const chatId = await fixture.openDirectChat(bob.id, alice.headers);
+
+    await setMute(alice.headers, chatId, 'forever');
+
+    const aliceChats = expectSuccess<
+      Array<{ id: string; muted: boolean; muteExpiresAt: string | null }>
+    >(await app.request.get('/api/chats').set(alice.headers));
+    const aliceChat = aliceChats.find((chat) => chat.id === chatId);
+    expect(aliceChat?.muted).toBe(true);
+    expect(aliceChat?.muteExpiresAt).toBeNull();
+
+    const bobChats = expectSuccess<
+      Array<{ id: string; muted: boolean; muteExpiresAt: string | null }>
+    >(await app.request.get('/api/chats').set(bob.headers));
+    const bobChat = bobChats.find((chat) => chat.id === chatId);
+    expect(bobChat?.muted).toBe(false);
+    expect(bobChat?.muteExpiresAt).toBeNull();
+
+    const expiredAt = new Date('2026-11-19T10:00:00.000Z');
+    const expiredUntil = new Date('2026-11-20T09:00:00.000Z');
+    await app.pool.query(
+      `UPDATE chat_members SET muted_at = $3, muted_until = $4
+       WHERE chat_id = $1 AND user_id = $2`,
+      [chatId, alice.id, expiredAt, expiredUntil],
+    );
+
+    const afterExpiry = expectSuccess<
+      Array<{ id: string; muted: boolean; muteExpiresAt: string | null }>
+    >(await app.request.get('/api/chats').set(alice.headers));
+    const expiredChat = afterExpiry.find((chat) => chat.id === chatId);
+    expect(expiredChat?.muted).toBe(false);
+    expect(expiredChat?.muteExpiresAt).toBeNull();
+
+    const stored = await app.pool.query<{ muted_at: Date | null; muted_until: Date | null }>(
+      `SELECT muted_at, muted_until FROM chat_members WHERE chat_id = $1 AND user_id = $2`,
+      [chatId, alice.id],
+    );
+    expect(stored.rows[0]?.muted_at).not.toBeNull();
+    expect(stored.rows[0]?.muted_until).not.toBeNull();
+  });
 });

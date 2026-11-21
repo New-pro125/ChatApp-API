@@ -52,6 +52,8 @@ export const chatSchema = z
     title: z.string().nullable(),
     unreadCount: z.number().int().nonnegative(),
     selfDestructPreset: selfDestructPresetSchema.nullable(),
+    muted: z.boolean(),
+    muteExpiresAt: z.iso.datetime().nullable(),
     participants: z.array(participantSummarySchema),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
