@@ -1,0 +1,3 @@
+ALTER TABLE "chat_members" ADD COLUMN "muted_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "chat_members" ADD COLUMN "muted_until" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "chat_members" ADD CONSTRAINT "chat_members_mute_check" CHECK (("chat_members"."muted_at" is null and "chat_members"."muted_until" is null) or ("chat_members"."muted_at" is not null and ("chat_members"."muted_until" is null or "chat_members"."muted_until" > "chat_members"."muted_at")));

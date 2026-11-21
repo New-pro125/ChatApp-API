@@ -437,4 +437,47 @@ describe('Messaging schema', () => {
     );
     expect(remaining.rows[0]?.count).toBe(0);
   });
+
+  it('enforces chat mute invariants', async () => {
+    const first = await auth.createUser();
+    const second = await auth.createUser();
+    const chatId = await createDirectChat(first.id, second.id);
+    const mutedAt = '2026-11-20T10:00:00.000Z';
+    const mutedUntil = '2026-11-21T10:00:00.000Z';
+
+    await expect(
+      app.pool.query(
+        `UPDATE chat_members SET muted_at = $3, muted_until = $4
+         WHERE chat_id = $1 AND user_id = $2`,
+        [chatId, first.id, mutedAt, mutedAt],
+      ),
+    ).rejects.toThrow(/chat_members_mute_check/);
+
+    await app.pool.query(
+      `UPDATE chat_members SET muted_at = $3, muted_until = NULL
+       WHERE chat_id = $1 AND user_id = $2`,
+      [chatId, first.id, mutedAt],
+    );
+
+    const forever = await app.pool.query<{ muted_at: Date | null; muted_until: Date | null }>(
+      `SELECT muted_at, muted_until FROM chat_members WHERE chat_id = $1 AND user_id = $2`,
+      [chatId, first.id],
+    );
+    expect(forever.rows[0]?.muted_at?.toISOString()).toBe(mutedAt);
+    expect(forever.rows[0]?.muted_until).toBeNull();
+
+    await app.pool.query(
+      `UPDATE chat_members SET muted_until = $3
+       WHERE chat_id = $1 AND user_id = $2`,
+      [chatId, first.id, mutedUntil],
+    );
+
+    await expect(
+      app.pool.query(
+        `UPDATE chat_members SET muted_until = $3
+         WHERE chat_id = $1 AND user_id = $2`,
+        [chatId, first.id, mutedAt],
+      ),
+    ).rejects.toThrow(/chat_members_mute_check/);
+  });
 });

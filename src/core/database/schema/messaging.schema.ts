@@ -80,6 +80,8 @@ export const chatMembers = pgTable(
     lastReadMessageId: uuid('last_read_message_id'),
     lastReadAt: timestamp('last_read_at', { withTimezone: true }),
     selfDestructPreset: text('self_destruct_preset'),
+    mutedAt: timestamp('muted_at', { withTimezone: true }),
+    mutedUntil: timestamp('muted_until', { withTimezone: true }),
   },
   (table) => [
     primaryKey({ columns: [table.chatId, table.userId], name: 'chat_members_pkey' }),
@@ -87,6 +89,10 @@ export const chatMembers = pgTable(
     check(
       'chat_members_self_destruct_preset_check',
       sql`${table.selfDestructPreset} is null or ${table.selfDestructPreset} in ('24h', '7d', '90d')`,
+    ),
+    check(
+      'chat_members_mute_check',
+      sql`(${table.mutedAt} is null and ${table.mutedUntil} is null) or (${table.mutedAt} is not null and (${table.mutedUntil} is null or ${table.mutedUntil} > ${table.mutedAt}))`,
     ),
     index('chat_members_user_id_index').on(table.userId, table.chatId),
   ],
