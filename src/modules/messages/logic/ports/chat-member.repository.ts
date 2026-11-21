@@ -30,4 +30,12 @@ export interface ChatMemberRepository {
     userId: string,
     preset: SelfDestructPreset | null,
   ): Promise<ChatMemberRecord>;
+
+  /** Updates only this user's mute state for this chat. */
+  setMute(
+    chatId: string,
+    userId: string,
+    mutedAt: Date | null,
+    mutedUntil: Date | null,
+  ): Promise<ChatMemberRecord>;
 }

@@ -179,4 +179,33 @@ export class PostgresChatMemberRepository implements ChatMemberRepository {
       throw new PersistenceException('Failed to set self-destruct preset', { cause: error });
     }
   }
+
+  async setMute(
+    chatId: string,
+    userId: string,
+    mutedAt: Date | null,
+    mutedUntil: Date | null,
+  ): Promise<ChatMemberRecord> {
+    try {
+      const rows = await this.db
+        .update(chatMembers)
+        .set({ mutedAt, mutedUntil })
+        .where(and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, userId)))
+        .returning(chatMemberSelection);
+
+      const updated = rows[0];
+
+      if (!updated) {
+        throw new PersistenceException('Failed to set chat mute: membership not found');
+      }
+
+      return this.mapper.toRecord(updated);
+    } catch (error) {
+      if (error instanceof PersistenceException) {
+        throw error;
+      }
+
+      throw new PersistenceException('Failed to set chat mute', { cause: error });
+    }
+  }
 }

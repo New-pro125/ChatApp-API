@@ -8,7 +8,8 @@ export type ChatMemberRole = 'member' | 'admin' | 'owner';
  * `leftAt` is reserved for a future leave model; 2.1 removes members by
  * deleting the row. The read watermark is a monotonic per-membership cursor:
  * `null` means nothing has been read yet. `selfDestructPreset` is the caller's
- * own timer for messages they send in this chat.
+ * own timer; `mutedAt`/`mutedUntil` are the caller's own notification
+ * preference. `mutedUntil = null` with `mutedAt` set means forever.
  */
 export class ChatMemberRecord {
   constructor(
@@ -20,5 +21,7 @@ export class ChatMemberRecord {
     readonly lastReadMessageId: string | null = null,
     readonly lastReadAt: Date | null = null,
     readonly selfDestructPreset: SelfDestructPreset | null = null,
+    readonly mutedAt: Date | null = null,
+    readonly mutedUntil: Date | null = null,
   ) {}
 }

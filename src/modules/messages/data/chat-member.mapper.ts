@@ -16,6 +16,8 @@ export const chatMemberSelection = {
   lastReadMessageId: chatMembers.lastReadMessageId,
   lastReadAt: chatMembers.lastReadAt,
   selfDestructPreset: chatMembers.selfDestructPreset,
+  mutedAt: chatMembers.mutedAt,
+  mutedUntil: chatMembers.mutedUntil,
 } as const;
 
 export type ChatMemberRow = Pick<
@@ -34,6 +36,8 @@ export class ChatMemberMapper {
       row.lastReadMessageId,
       row.lastReadAt,
       row.selfDestructPreset as SelfDestructPreset | null,
+      row.mutedAt,
+      row.mutedUntil,
     );
   }
 }
