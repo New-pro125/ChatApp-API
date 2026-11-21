@@ -33,6 +33,14 @@ export interface ListMessagesQuery {
   beforeId?: string | undefined;
 }
 
+/** Input accepted when searching a chat's visible message text. */
+export interface SearchMessagesQuery {
+  q: string;
+  limit: number;
+  /** Return matches strictly older than this message id. */
+  beforeId?: string | undefined;
+}
+
 /** Ciphertext payload accepted when creating a secret message. */
 export interface CreateSecretMessageInput {
   chatId: string;
@@ -54,6 +62,9 @@ export interface MessageRepository {
 
   /** Newest-first page of a chat's messages, optionally before a cursor. */
   listByChat(chatId: string, query: ListMessagesQuery): Promise<MessageRecord[]>;
+
+  /** Newest-first keyword matches over body and caption, optionally before a cursor. */
+  search(chatId: string, query: SearchMessagesQuery): Promise<MessageRecord[]>;
 
   /** Edits a message body, stamping `editedAt`. Null when no row matched. */
   editBody(chatId: string, id: string, body: string, editedAt: Date): Promise<MessageRecord | null>;

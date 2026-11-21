@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql } from 'd
 import { inject, injectable } from 'inversify';
 import { CORE_TYPES } from '@/core/container/core.types.js';
 import type { AppDatabase } from '@/core/database/database.provider.js';
-import { chatMembers, chats, messages } from '@/core/database/schema/index.js';
+import { chatMembers, chats, messageSearchVector, messages } from '@/core/database/schema/index.js';
 import { PersistenceException } from '@/core/errors/repository.error.js';
 import { MessageMapper, messageSelection } from '@/modules/messages/data/message.mapper.js';
 import type { MessageRecord } from '@/modules/messages/logic/entities/message-record.js';
@@ -11,6 +11,7 @@ import type {
   CreateSecretMessageInput,
   ListMessagesQuery,
   MessageRepository,
+  SearchMessagesQuery,
 } from '@/modules/messages/logic/ports/message.repository.js';
 
 /**
@@ -171,6 +172,33 @@ export class PostgresMessageRepository implements MessageRepository {
       return rows.map((row) => this.mapper.toRecord(row));
     } catch (error) {
       throw new PersistenceException('Failed to list messages', { cause: error });
+    }
+  }
+
+  async search(chatId: string, query: SearchMessagesQuery): Promise<MessageRecord[]> {
+    try {
+      const conditions = [
+        eq(messages.chatId, chatId),
+        inArray(messages.type, ['text', 'media']),
+        isNull(messages.deletedAt),
+        this.notExpired(),
+        sql`${messageSearchVector} @@ websearch_to_tsquery('english', ${query.q})`,
+      ];
+
+      if (query.beforeId) {
+        conditions.push(lt(messages.id, query.beforeId));
+      }
+
+      const rows = await this.db
+        .select(messageSelection)
+        .from(messages)
+        .where(and(...conditions))
+        .orderBy(desc(messages.id))
+        .limit(query.limit);
+
+      return rows.map((row) => this.mapper.toRecord(row));
+    } catch (error) {
+      throw new PersistenceException('Failed to search messages', { cause: error });
     }
   }
 
