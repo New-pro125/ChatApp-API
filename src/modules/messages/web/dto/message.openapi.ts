@@ -21,6 +21,7 @@ import {
   pinMessageSchema,
   readMentionsSchema,
   saveDraftSchema,
+  searchMessagesQuerySchema,
   selfDestructPresetSchema,
   sendMediaMessageSchema,
   sendMessageSchema,
@@ -337,6 +338,19 @@ export const messageContracts = {
     request: { params: chatParamsSchema, query: listMessagesQuerySchema },
     responses: {
       200: { description: 'A page of messages', schema: messageListResponse },
+      ...commonErrorResponses,
+    },
+  },
+  searchMessages: {
+    operationId: 'chats.searchMessages',
+    tags: ['Messages'],
+    summary: 'Search messages in a chat by keyword',
+    description:
+      'Returns matching messages newest first, searching body and media caption text with English full-text search. Pass `meta.pagination.nextCursor` as `cursor` to continue. Secret chats return 403 E2EE_NOT_ALLOWED. Punctuation-only queries return an empty page.',
+    security: bearerSecurity,
+    request: { params: chatParamsSchema, query: searchMessagesQuerySchema },
+    responses: {
+      200: { description: 'A page of matching messages', schema: messageListResponse },
       ...commonErrorResponses,
     },
   },

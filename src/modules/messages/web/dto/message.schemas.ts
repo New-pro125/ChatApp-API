@@ -85,6 +85,13 @@ export const listMessagesQuerySchema = z.object({
   cursor: z.uuid().optional(),
 });
 
+/** Keyset page of keyword matches within one chat. */
+export const searchMessagesQuerySchema = z.object({
+  q: z.string().trim().min(1).max(200),
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+  cursor: z.uuid().optional(),
+});
+
 /** Body for editing an owned message. */
 export const editMessageSchema = z.object({
   body: messageBodySchema,
@@ -128,4 +135,5 @@ export const readMentionsSchema = z.object({
 export type ListMentionsQuerySchema = z.infer<typeof listMentionsQuerySchema>;
 export type SendMessageSchema = z.infer<typeof sendMessageSchema>;
 export type ListMessagesQuerySchema = z.infer<typeof listMessagesQuerySchema>;
+export type SearchMessagesQuerySchema = z.infer<typeof searchMessagesQuerySchema>;
 export type SendMediaMessageSchema = z.infer<typeof sendMediaMessageSchema>;
