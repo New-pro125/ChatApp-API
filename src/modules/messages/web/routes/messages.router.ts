@@ -248,7 +248,9 @@ export class MessagesRouter {
       this.requireVerifiedEmail.handle,
       this.limiter.handle,
       (req, res, next) =>
-        req.container.get<MessageController>(MESSAGES_TYPES.MessageController).search(req, res, next),
+        req.container
+          .get<MessageController>(MESSAGES_TYPES.MessageController)
+          .search(req, res, next),
     );
 
     routes.patch(

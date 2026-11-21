@@ -1,7 +1,7 @@
 import { inject, injectable } from 'inversify';
 import { E2eeNotAllowedException } from '@/core/errors/domain.error.js';
 import type { MessageRecord } from '@/modules/messages/logic/entities/message-record.js';
-import { MessagingPolicy } from '@/modules/messages/logic/messaging-policy.service.js';
+import type { MessagingPolicy } from '@/modules/messages/logic/messaging-policy.service.js';
 import type { ChatRepository } from '@/modules/messages/logic/ports/chat.repository.js';
 import type {
   MessageRepository,

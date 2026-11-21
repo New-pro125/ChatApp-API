@@ -97,9 +97,7 @@ describe('chat message search API', () => {
     const unverified = await fixture.unverifiedUser('Unverified');
     const chatId = await fixture.openDirectChat(bob.id, alice.headers);
 
-    const anonymous = await app.request.get(
-      `/api/chats/${chatId}/messages/search?q=running`,
-    );
+    const anonymous = await app.request.get(`/api/chats/${chatId}/messages/search?q=running`);
     expectError(anonymous, 401, 'UNAUTHORIZED');
 
     const unverifiedResponse = await app.request

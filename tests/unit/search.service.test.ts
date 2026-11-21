@@ -1,8 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-  E2eeNotAllowedException,
-  NotChatMemberException,
-} from '@/core/errors/domain.error.js';
+import { E2eeNotAllowedException, NotChatMemberException } from '@/core/errors/domain.error.js';
 import type { MessagingPolicy } from '@/modules/messages/logic/messaging-policy.service.js';
 import type { ChatRepository } from '@/modules/messages/logic/ports/chat.repository.js';
 import type { MessageRepository } from '@/modules/messages/logic/ports/message.repository.js';
@@ -47,9 +44,9 @@ describe('SearchService', () => {
 
   it('does not query messages when the caller is not a member', async () => {
     const { messages } = makeService();
-    const policy = { requireMember: vi.fn(async () => {
-      throw new NotChatMemberException();
-    }) };
+    const policy = {
+      requireMember: vi.fn(() => Promise.reject(new NotChatMemberException())),
+    };
     const rejecting = new SearchService(
       policy as unknown as MessagingPolicy,
       { findById: vi.fn() } as unknown as ChatRepository,
