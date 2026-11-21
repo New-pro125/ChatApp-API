@@ -292,6 +292,7 @@ use the shared `rl:messages:` bucket (120 requests per 15 minutes).
 | `GET`    | `/api/chats/:chatId/pins`                        | List the caller's pinned messages            |
 | `POST`   | `/api/chats/:chatId/messages`                    | Send a text message                          |
 | `GET`    | `/api/chats/:chatId/messages`                    | List history with keyset pagination          |
+| `GET`    | `/api/chats/:chatId/messages/search`             | Search message text by keyword               |
 | `PATCH`  | `/api/chats/:chatId/messages/:messageId`         | Edit an owned message                        |
 | `DELETE` | `/api/chats/:chatId/messages/:messageId`         | Soft-delete an owned message                 |
 | `POST`   | `/api/chats/:chatId/messages/:messageId/forward` | Forward a message into another chat          |
@@ -317,6 +318,14 @@ the same chat. `GET` accepts `limit` (1–100, default 30) and an opaque `cursor
 history is newest first and `meta.pagination.nextCursor` is `null` on the last
 page. The cursor is the last returned uuidv7 message id, so several messages
 created in the same millisecond are never skipped.
+
+`GET /api/chats/:chatId/messages/search` accepts `q` (required, 1–200
+characters), `limit` (1–100, default 30), and the same opaque `cursor` as
+history. It matches message bodies and media captions case-insensitively using
+English full-text search, returns newest-first pages in the same message-view
+envelope, and supports quoted phrases, `-exclusion`, and `or` in `q`. A
+punctuation-only query returns an empty page. Secret chats are rejected with
+`403 E2EE_NOT_ALLOWED`; non-members receive `403 NOT_CHAT_MEMBER`.
 
 Only the sender can edit or delete a message. Deletes are tombstones: the row
 stays in history with `body: null` and a `deletedAt` timestamp. Forwarding copies
