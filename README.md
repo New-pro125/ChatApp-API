@@ -324,8 +324,10 @@ characters), `limit` (1–100, default 30), and the same opaque `cursor` as
 history. It matches message bodies and media captions case-insensitively using
 English full-text search, returns newest-first pages in the same message-view
 envelope, and supports quoted phrases, `-exclusion`, and `or` in `q`. A
-punctuation-only query returns an empty page. Secret chats are rejected with
-`403 E2EE_NOT_ALLOWED`; non-members receive `403 NOT_CHAT_MEMBER`.
+punctuation-only query returns an empty page. Search follows the same privacy
+rules as history: blocked conversations return `403 USER_BLOCKED`, secret chats
+are rejected with `403 E2EE_NOT_ALLOWED`, and non-members receive `403
+NOT_CHAT_MEMBER`.
 
 Only the sender can edit or delete a message. Deletes are tombstones: the row
 stays in history with `body: null` and a `deletedAt` timestamp. Forwarding copies

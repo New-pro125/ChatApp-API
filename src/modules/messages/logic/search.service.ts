@@ -24,6 +24,7 @@ export class SearchService {
     query: SearchMessagesQuery,
   ): Promise<MessageRecord[]> {
     await this.policy.requireMember(chatId, userId);
+    await this.policy.assertChatUnblocked(chatId, userId);
 
     const chat = await this.chats.findById(chatId);
 

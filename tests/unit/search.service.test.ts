@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { E2eeNotAllowedException, NotChatMemberException } from '@/core/errors/domain.error.js';
+import {
+  E2eeNotAllowedException,
+  NotChatMemberException,
+  UserBlockedException,
+} from '@/core/errors/domain.error.js';
 import type { MessagingPolicy } from '@/modules/messages/logic/messaging-policy.service.js';
 import type { ChatRepository } from '@/modules/messages/logic/ports/chat.repository.js';
 import type { MessageRepository } from '@/modules/messages/logic/ports/message.repository.js';
@@ -9,7 +13,10 @@ describe('SearchService', () => {
   const query = { q: 'running', limit: 31, beforeId: 'cursor-id' };
 
   function makeService(chatType: 'direct' | 'secret' = 'direct') {
-    const policy = { requireMember: vi.fn(async () => undefined) };
+    const policy = {
+      requireMember: vi.fn(async () => undefined),
+      assertChatUnblocked: vi.fn(async () => undefined),
+    };
     const chats = { findById: vi.fn(async () => ({ type: chatType })) };
     const messages = { search: vi.fn(async () => []) };
 
@@ -30,7 +37,18 @@ describe('SearchService', () => {
     await service.search('user-1', 'chat-1', query);
 
     expect(policy.requireMember).toHaveBeenCalledWith('chat-1', 'user-1');
+    expect(policy.assertChatUnblocked).toHaveBeenCalledWith('chat-1', 'user-1');
     expect(messages.search).toHaveBeenCalledWith('chat-1', query);
+  });
+
+  it('does not query messages when the conversation is blocked', async () => {
+    const { policy, messages, service } = makeService();
+    policy.assertChatUnblocked.mockRejectedValueOnce(new UserBlockedException());
+
+    await expect(service.search('user-1', 'chat-1', query)).rejects.toBeInstanceOf(
+      UserBlockedException,
+    );
+    expect(messages.search).not.toHaveBeenCalled();
   });
 
   it('rejects a secret chat before querying messages', async () => {

@@ -70,6 +70,21 @@ describe('chat message search API', () => {
     expect(response.body.meta.pagination.nextCursor).toBeNull();
   });
 
+  it('returns an empty page for a punctuation-only query', async () => {
+    const alice = await fixture.verifiedUser('Alice');
+    const bob = await fixture.verifiedUser('Bob');
+    const chatId = await fixture.openDirectChat(bob.id, alice.headers);
+    await send(chatId, alice.headers, 'a normal message');
+
+    const response = await app.request
+      .get(`/api/chats/${chatId}/messages/search?q=%21%21%21`)
+      .set(alice.headers);
+    const data = expectSuccess<unknown[]>(response);
+
+    expect(data).toEqual([]);
+    expect(response.body.meta.pagination.nextCursor).toBeNull();
+  });
+
   it('rejects invalid query parameters with VALIDATION_ERROR', async () => {
     const alice = await fixture.verifiedUser('Alice');
     const bob = await fixture.verifiedUser('Bob');
@@ -109,6 +124,19 @@ describe('chat message search API', () => {
       .get(`/api/chats/${chatId}/messages/search?q=running`)
       .set(outsider.headers);
     expectError(outsiderResponse, 403, 'NOT_CHAT_MEMBER');
+  });
+
+  it('rejects search when either side has blocked the other', async () => {
+    const alice = await fixture.verifiedUser('Alice');
+    const bob = await fixture.verifiedUser('Bob');
+    const chatId = await fixture.openDirectChat(bob.id, alice.headers);
+    await send(chatId, alice.headers, 'running note');
+    await fixture.block(bob.id, alice.id);
+
+    const response = await app.request
+      .get(`/api/chats/${chatId}/messages/search?q=running`)
+      .set(alice.headers);
+    expectError(response, 403, 'USER_BLOCKED');
   });
 
   it('rejects secret chats with E2EE_NOT_ALLOWED', async () => {
