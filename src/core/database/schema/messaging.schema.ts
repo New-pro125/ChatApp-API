@@ -15,6 +15,16 @@ import { users } from '@/core/database/schema/auth.schema.js';
 import { mediaObjects } from '@/core/database/schema/media.schema.js';
 
 /**
+ * Full-text document shared by the GIN index and the search predicate.
+ * Identifiers stay unqualified so PostgreSQL can propagate the expression
+ * index from the partitioned parent to every hash partition.
+ */
+export const messageSearchVector = sql`to_tsvector(
+  'english',
+  coalesce(${sql.identifier('body')}, '') || ' ' || coalesce(${sql.identifier('caption')}, '')
+)`;
+
+/**
  * Messaging tables owned by the `messages` module.
  *
  * `chats` is the unified chat identity: direct conversations, groups, and
@@ -262,6 +272,7 @@ export const messages = pgTable(
     index('messages_media_id_index').on(table.mediaId),
     index('messages_sender_device_id_index').on(table.chatId, table.senderDeviceId),
     index('messages_recipient_device_id_index').on(table.chatId, table.recipientDeviceId),
+    index('messages_search_index').using('gin', messageSearchVector),
   ],
 );
 

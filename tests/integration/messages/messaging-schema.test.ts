@@ -480,4 +480,60 @@ describe('Messaging schema', () => {
       ),
     ).rejects.toThrow(/chat_members_mute_check/);
   });
+
+  it('creates a GIN search index on every messages partition', async () => {
+    const parent = await app.pool.query<{ indexdef: string }>(
+      `SELECT indexdef FROM pg_indexes
+       WHERE schemaname = 'public' AND tablename = 'messages'
+         AND indexname = 'messages_search_index'`,
+    );
+    expect(parent.rows).toHaveLength(1);
+    expect(parent.rows[0]?.indexdef).toContain('USING gin');
+    expect(parent.rows[0]?.indexdef).toContain('to_tsvector');
+
+    const children = await app.pool.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM pg_inherits
+       WHERE inhparent = 'public.messages_search_index'::regclass`,
+    );
+    expect(children.rows[0]?.count).toBe(16);
+  });
+
+  it('uses the search index for a chat-scoped full-text query', async () => {
+    const sender = await auth.createUser();
+    const recipient = await auth.createUser();
+    const chatId = await createDirectChat(sender.id, recipient.id);
+
+    // Only one row matches, so the planner prefers the selective GIN index
+    // over walking the (chat_id, id) primary key and filtering every row.
+    await app.pool.query(
+      `INSERT INTO messages (chat_id, sender_id, body)
+       SELECT $1, $2,
+         CASE WHEN n = 1 THEN 'needle message' ELSE 'ordinary filler ' || n END
+       FROM generate_series(1, 500) AS n`,
+      [chatId, sender.id],
+    );
+    await app.pool.query('ANALYZE messages');
+
+    const client = await app.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SET LOCAL enable_seqscan = off');
+      const explained = await client.query<{ 'QUERY PLAN': string[] }>(
+        `EXPLAIN SELECT id FROM messages
+         WHERE chat_id = $1
+           AND to_tsvector('english',
+                 coalesce("body", '') || ' ' || coalesce("caption", ''))
+               @@ websearch_to_tsquery('english', $2)
+         ORDER BY id DESC LIMIT 30`,
+        [chatId, 'needle'],
+      );
+      await client.query('COMMIT');
+
+      const plan = explained.rows.map((row) => row['QUERY PLAN']).join('\n');
+      expect(plan).toMatch(/Bitmap Index Scan on messages_p\d+_to_tsvector_idx/);
+      expect(plan).toContain('to_tsvector');
+    } finally {
+      client.release();
+    }
+  });
 });
