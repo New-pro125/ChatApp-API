@@ -25,6 +25,7 @@ import {
   sendMediaMessageSchema,
   sendMessageSchema,
   sendSecretMessageSchema,
+  setMuteSchema,
   setSelfDestructSchema,
 } from '@/modules/messages/web/dto/message.schemas.js';
 
@@ -130,6 +131,16 @@ const selfDestructResponse = successEnvelope(
   z.object({ preset: selfDestructPresetSchema.nullable() }),
   'SelfDestructSettingResponse',
 );
+
+const muteSettingSchema = z
+  .object({
+    chatId: z.uuid(),
+    muted: z.boolean(),
+    muteExpiresAt: z.iso.datetime().nullable(),
+  })
+  .meta({ id: 'ChatMuteSetting' });
+
+const muteResponse = successEnvelope(muteSettingSchema, 'ChatMuteSettingResponse');
 
 export const draftSchema = z
   .object({
@@ -427,6 +438,19 @@ export const messageContracts = {
     request: { params: chatParamsSchema, body: setSelfDestructSchema },
     responses: {
       200: { description: 'The updated caller setting', schema: selfDestructResponse },
+      ...commonErrorResponses,
+    },
+  },
+  setMute: {
+    operationId: 'chats.setMute',
+    tags: ['Chats'],
+    summary: 'Set or clear the caller mute for a chat',
+    description:
+      'Accepts 8h, 7d, forever, or null to unmute. Muting does not stop delivery or change unread counts.',
+    security: bearerSecurity,
+    request: { params: chatParamsSchema, body: setMuteSchema },
+    responses: {
+      200: { description: 'The updated mute state', schema: muteResponse },
       ...commonErrorResponses,
     },
   },

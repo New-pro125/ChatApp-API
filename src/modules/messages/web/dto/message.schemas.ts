@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { mediaKindSchema } from '@/core/media/media-form.schema.js';
+import { MUTE_PRESETS } from '@/modules/messages/logic/entities/mute-preset.js';
 import { SELF_DESTRUCT_PRESETS } from '@/modules/messages/logic/entities/self-destruct-preset.js';
 
 export type { CombinedMediaFieldsSchema, MediaKind } from '@/core/media/media-form.schema.js';
@@ -35,6 +36,13 @@ export const selfDestructPresetSchema = z.enum(SELF_DESTRUCT_PRESETS);
 
 export const setSelfDestructSchema = z.object({
   preset: selfDestructPresetSchema.nullable(),
+});
+
+/** Caller-scoped mute preset; null unmutes the chat. */
+export const mutePresetSchema = z.enum(MUTE_PRESETS);
+
+export const setMuteSchema = z.object({
+  preset: mutePresetSchema.nullable(),
 });
 
 /** Route parameters for operations on a single message. */

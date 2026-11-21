@@ -34,6 +34,7 @@ import { MentionController } from '@/modules/messages/web/mention.controller.js'
 import { MessageController } from '@/modules/messages/web/message.controller.js';
 import { MessagePresenter } from '@/modules/messages/web/message-presenter.service.js';
 import { MultipartMediaParser } from '@/modules/messages/web/multipart-media.parser.js';
+import { MuteController } from '@/modules/messages/web/mute.controller.js';
 import { PinController } from '@/modules/messages/web/pin.controller.js';
 import { MessagesRouter } from '@/modules/messages/web/routes/messages.router.js';
 
@@ -99,6 +100,7 @@ export class MessagesContainer extends Container {
     this.bind<ChatController>(MESSAGES_TYPES.ChatController).to(ChatController);
     this.bind<DraftController>(MESSAGES_TYPES.DraftController).to(DraftController);
     this.bind<MentionController>(MESSAGES_TYPES.MentionController).to(MentionController);
+    this.bind<MuteController>(MESSAGES_TYPES.MuteController).to(MuteController);
     this.bind<MessagePresenter>(MESSAGES_TYPES.MessagePresenter).to(MessagePresenter);
     this.bind<MultipartMediaParser>(MESSAGES_TYPES.MultipartMediaParser)
       .to(MultipartMediaParser)

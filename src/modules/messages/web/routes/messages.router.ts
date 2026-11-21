@@ -13,6 +13,7 @@ import type { DraftController } from '@/modules/messages/web/draft.controller.js
 import { messageContracts } from '@/modules/messages/web/dto/message.openapi.js';
 import type { MentionController } from '@/modules/messages/web/mention.controller.js';
 import type { MessageController } from '@/modules/messages/web/message.controller.js';
+import type { MuteController } from '@/modules/messages/web/mute.controller.js';
 import type { PinController } from '@/modules/messages/web/pin.controller.js';
 
 /** HTTP routes for chats and their nested messages. */
@@ -102,6 +103,16 @@ export class MessagesRouter {
       this.limiter.handle,
       (req, res, next) =>
         req.container.get<ChatController>(MESSAGES_TYPES.ChatController).markRead(req, res, next),
+    );
+
+    routes.patch(
+      '/:chatId/mute',
+      messageContracts.setMute,
+      this.requireAuth.handle,
+      this.requireVerifiedEmail.handle,
+      this.limiter.handle,
+      (req, res, next) =>
+        req.container.get<MuteController>(MESSAGES_TYPES.MuteController).set(req, res, next),
     );
 
     routes.patch(
