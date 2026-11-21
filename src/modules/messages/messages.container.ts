@@ -26,6 +26,7 @@ import type { MessageDraftRepository } from '@/modules/messages/logic/ports/mess
 import type { MessageMentionRepository } from '@/modules/messages/logic/ports/message-mention.repository.js';
 import type { MessagePinRepository } from '@/modules/messages/logic/ports/message-pin.repository.js';
 import { ReadReceiptService } from '@/modules/messages/logic/read-receipt.service.js';
+import { SearchService } from '@/modules/messages/logic/search.service.js';
 import { SelfDestructCleanupWorker } from '@/modules/messages/logic/self-destruct-cleanup.worker.js';
 import { MESSAGES_TYPES } from '@/modules/messages/messages.types.js';
 import { ChatController } from '@/modules/messages/web/chat.controller.js';
@@ -80,6 +81,7 @@ export class MessagesContainer extends Container {
       .inSingletonScope();
     this.bind<ChatService>(MESSAGES_TYPES.ChatService).to(ChatService).inSingletonScope();
     this.bind<MessageService>(MESSAGES_TYPES.MessageService).to(MessageService).inSingletonScope();
+    this.bind<SearchService>(MESSAGES_TYPES.SearchService).to(SearchService).inSingletonScope();
     this.bind<PinService>(MESSAGES_TYPES.PinService).to(PinService).inSingletonScope();
     this.bind<PinCleanupWorker>(MESSAGES_TYPES.PinCleanupWorker)
       .to(PinCleanupWorker)

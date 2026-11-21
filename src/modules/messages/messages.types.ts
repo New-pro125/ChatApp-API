@@ -15,6 +15,7 @@ export const MESSAGES_TYPES = {
   ReadReceiptService: Symbol.for('Messages.ReadReceiptService'),
   ChatService: Symbol.for('Messages.ChatService'),
   MessageService: Symbol.for('Messages.MessageService'),
+  SearchService: Symbol.for('Messages.SearchService'),
   PinService: Symbol.for('Messages.PinService'),
   PinCleanupWorker: Symbol.for('Messages.PinCleanupWorker'),
   SelfDestructCleanupWorker: Symbol.for('Messages.SelfDestructCleanupWorker'),
